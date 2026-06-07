@@ -1,0 +1,35 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Runtime / logs
+streaming.log
+app.log
+*.log
+
+# Workspace (translations in progress, large files)
+workspace/
+
+# Loose glossary / output files in root
+glossary*.json
+glossary_*.json
+*-*.json
+*_trimmed/
+*.epub
+*.pdf
+# Output html files but not static app html
+/jobs/*.html
+# Translation output txt files (not requirements.txt etc.)
+*-[0-9]*.txt
+deepseek-*.txt
+27b-*.txt
+
+# Dev tools
+.env

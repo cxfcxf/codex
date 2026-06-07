@@ -1,0 +1,12 @@
+.venv
+__pycache__
+*.pyc
+*.pyo
+jobs/
+*.pdf
+*.epub
+*.html
+*.json
+translate.py
+app.py
+.env

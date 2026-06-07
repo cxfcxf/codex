@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+python-multipart
+pymupdf
+openai
+ebooklib
+beautifulsoup4
+python-docx
+lxml
+weasyprint

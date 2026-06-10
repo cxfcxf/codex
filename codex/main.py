@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 import threading
 import uuid
 from pathlib import Path
@@ -9,8 +10,9 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from codex.config import WORKSPACE_DIR, DEFAULT_BASE_URL, MODEL, DEFAULT_TEMPERATURE
+from codex.config import WORKSPACE_DIR, DEFAULT_BASE_URL, MODEL
 from codex.pipeline.extract import extract_text, suggest_settings
+from codex.pipeline.tts import tts_worker, DEFAULT_VOICE
 from codex.worker import translation_worker
 
 app = FastAPI()
@@ -32,7 +34,7 @@ cancel_events: dict = {}
 @app.post("/api/analyze")
 async def analyze_file(file: UploadFile = File(...)):
     import tempfile
-    suffix = Path(file.filename).suffix.lower()
+    suffix = Path(file.filename or "file").suffix.lower()
     content = await file.read()
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp.write(content)
@@ -49,7 +51,6 @@ async def analyze_file(file: UploadFile = File(...)):
 @app.post("/api/translate")
 async def start_translation(
     file: UploadFile = File(...),
-    api_key: str = Form(default=""),
     base_url: str = Form(default=DEFAULT_BASE_URL),
     model: str = Form(default=MODEL),
     src_lang: str = Form("en"),
@@ -57,19 +58,16 @@ async def start_translation(
     output_format: str = Form("epub"),
     workers: int = Form(1),
     chunk_size: int = Form(1500),
-    extract_chunk_size: int = Form(3000),
-    extract_sample_pct: int = Form(10),
     overlap_words: int = Form(150),
-    temperature: float = Form(default=DEFAULT_TEMPERATURE),
     base_glossary_file: Optional[UploadFile] = File(None),
-    glossary_file: Optional[UploadFile] = File(None),
 ):
     job_id = str(uuid.uuid4())
-    book_stem = Path(file.filename).stem
+    filename = file.filename or "book"
+    book_stem = Path(filename).stem
     book_dir = WORKSPACE_DIR / book_stem
     book_dir.mkdir(parents=True, exist_ok=True)
 
-    suffix = Path(file.filename).suffix.lower()
+    suffix = Path(filename).suffix.lower()
     file_path = book_dir / f"input{suffix}"
     file_path.write_bytes(await file.read())
 
@@ -81,12 +79,8 @@ async def start_translation(
     if base_glossary_file and base_glossary_file.filename:
         base_glossary_content = (await base_glossary_file.read()).decode("utf-8")
 
-    glossary_content = None
-    if glossary_file and glossary_file.filename:
-        glossary_content = (await glossary_file.read()).decode("utf-8")
-
     config = {
-        "api_key": api_key.strip(),
+        "api_key": "dummy",
         "base_url": base_url.strip(),
         "model": model.strip(),
         "src_lang": src_lang,
@@ -94,12 +88,8 @@ async def start_translation(
         "output_format": output_format,
         "workers": max(1, min(workers, 20)),
         "chunk_size": max(200, min(chunk_size, 5000)),
-        "extract_chunk_size": max(500, min(extract_chunk_size, 10000)),
-        "extract_sample_pct": max(5, min(extract_sample_pct, 100)),
         "overlap_words": max(0, min(overlap_words, 500)),
         "base_glossary_content": base_glossary_content,
-        "glossary_content": glossary_content,
-        "temperature": temperature,
         "original_stem": book_stem,
         "book_dir": str(book_dir),
     }
@@ -112,6 +102,79 @@ async def start_translation(
     )
     thread.start()
     return {"job_id": job_id}
+
+
+@app.post("/api/tts")
+async def start_tts(file: UploadFile = File(...), voice: str = Form(default=DEFAULT_VOICE)):
+    filename = file.filename or "book"
+    if not filename.lower().endswith(".epub"):
+        raise HTTPException(400, "EPUB file required")
+    job_id = str(uuid.uuid4())
+    book_dir = WORKSPACE_DIR / Path(filename).stem
+    (book_dir / "tts").mkdir(parents=True, exist_ok=True)
+    file_path = book_dir / "tts" / "input.epub"
+    file_path.write_bytes(await file.read())
+
+    jobs[job_id] = {"status": "pending", "result_path": None, "error": None}
+    job_queues[job_id] = asyncio.Queue()
+    cancel_events[job_id] = threading.Event()
+
+    config = {"voice": voice.strip() or DEFAULT_VOICE, "book_dir": str(book_dir)}
+    loop = asyncio.get_event_loop()
+    thread = threading.Thread(
+        target=tts_worker,
+        args=(job_id, file_path, config, loop, jobs, job_queues, cancel_events),
+        daemon=True,
+    )
+    thread.start()
+    return {"job_id": job_id}
+
+
+@app.get("/api/tts/library")
+async def tts_library():
+    books = []
+    for d in sorted(WORKSPACE_DIR.iterdir()):
+        ch_dir = d / "tts" / "chapters"
+        if not ch_dir.is_dir():
+            continue
+        files = sorted(ch_dir.glob("*.mp3"))
+        if files:
+            books.append({
+                "book": d.name,
+                "chapters": [{"name": f.stem, "file": f.name} for f in files],
+            })
+    return books
+
+
+_VOICE_RE = re.compile(r"^[a-zA-Z]{2,3}-[a-zA-Z]{2,10}-[a-zA-Z0-9]+$")
+
+
+@app.get("/api/tts/preview/{voice}")
+async def tts_voice_preview(voice: str):
+    if not _VOICE_RE.match(voice):
+        raise HTTPException(400, "Invalid voice name")
+    cache_dir = WORKSPACE_DIR / "_voice_previews"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    path = cache_dir / f"{voice}.mp3"
+    if not path.exists():
+        import edge_tts
+        sample = ("你好，这是本朗读声音的预览。愿黄金王座的光辉指引你。"
+                  if voice.lower().startswith("zh") else
+                  "Hello, this is a preview of this narration voice.")
+        try:
+            await edge_tts.Communicate(sample, voice).save(str(path))
+        except Exception as e:
+            path.unlink(missing_ok=True)
+            raise HTTPException(502, f"Preview failed: {e}")
+    return FileResponse(str(path), media_type="audio/mpeg")
+
+
+@app.get("/api/tts/audio/{book}/{filename}")
+async def tts_audio(book: str, filename: str):
+    path = (WORKSPACE_DIR / book / "tts" / "chapters" / filename).resolve()
+    if not path.is_relative_to(WORKSPACE_DIR.resolve()) or not path.exists():
+        raise HTTPException(404, "Not found")
+    return FileResponse(str(path), media_type="audio/mpeg")
 
 
 @app.get("/api/progress/{job_id}")

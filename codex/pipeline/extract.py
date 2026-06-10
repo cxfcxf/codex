@@ -77,7 +77,7 @@ def _text_to_pages(text: str, words_per_page: int = 300) -> list[dict]:
     return pages
 
 
-def analyze_epub_structure(path: Path) -> list[dict]:
+def analyze_epub_structure(path: Path, min_para_chars: int = 10) -> list[dict]:
     """Return flat list of {filename, title, text} for each content document in an EPUB."""
     import ebooklib
     from ebooklib import epub
@@ -91,7 +91,7 @@ def analyze_epub_structure(path: Path) -> list[dict]:
         soup = BeautifulSoup(item.get_content(), "html.parser")
         paras = [p.get_text(separator=" ", strip=True)
                  for p in soup.find_all("p")
-                 if len(p.get_text(strip=True)) > 10]
+                 if len(p.get_text(strip=True)) > min_para_chars]
         if not paras:
             continue
         h1 = soup.find("h1")

@@ -1,4 +1,7 @@
+deep-translator
+edge-tts
 fastapi
+pyspellchecker
 uvicorn[standard]
 python-multipart
 pymupdf

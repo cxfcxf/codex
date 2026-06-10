@@ -15,7 +15,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY codex/ codex/
 COPY static/ static/
 
-RUN mkdir -p jobs translation_chapters
+RUN mkdir -p workspace
 
 EXPOSE 8000
 CMD ["uvicorn", "codex.main:app", "--host", "0.0.0.0", "--port", "8000"]

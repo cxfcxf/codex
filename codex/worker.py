@@ -1,23 +1,13 @@
 import asyncio
 import json
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from openai import OpenAI
 
-from codex.config import (
-    MODEL, DEFAULT_TEMPERATURE,
-    TRANSLATE_WORKERS, CHUNK_SIZE_WORDS, EXTRACT_CHUNK_WORDS,
-    LANG_NAMES_EN,
-)
+from codex.config import MODEL, DEFAULT_TEMPERATURE, CHUNK_SIZE_WORDS, LANG_NAMES_EN
 from codex.pipeline.extract import extract_text, chunk_pages, analyze_epub_structure
-from codex.pipeline.glossary import (
-    build_extract_prompt, build_resolve_prompt, build_cap_extract_prompt,
-    extract_terms_one, extract_capitalized_terms, translate_cap_terms,
-    merge_terms, auto_resolve,
-)
-from codex.pipeline.translate import build_system_prompt, translate_chunk
+from codex.pipeline.translate import build_system_prompt, translate_chunk, correct_translation
 from codex.pipeline.output import generate_output, build_translated_epub
 
 
@@ -39,15 +29,12 @@ def translation_worker(
     cancel = cancel_events.get(job_id, threading.Event())
     src_lang = config["src_lang"]
     tgt_lang = config["tgt_lang"]
-    workers = config.get("workers", TRANSLATE_WORKERS)
     model = config.get("model", MODEL)
-    temperature = config.get("temperature", DEFAULT_TEMPERATURE)
-    lock = threading.Lock()
+    temperature = DEFAULT_TEMPERATURE
 
-    # Per-book workspace directories
     book_dir = Path(config["book_dir"])
     chapters_dir = book_dir / "translation_chapters"
-    glossary_path = book_dir / "glossary.json"
+    memory_path = book_dir / "translation_memory.json"
     jobs_dir = book_dir / "jobs"
     chapters_dir.mkdir(parents=True, exist_ok=True)
     jobs_dir.mkdir(parents=True, exist_ok=True)
@@ -55,147 +42,68 @@ def translation_worker(
     try:
         client = OpenAI(api_key=config["api_key"] or "dummy", base_url=config["base_url"])
 
-        # ── Resolve glossary ───────────────────────────────────────────────────
-        # Priority: uploaded file > existing book glossary.json > none
-        glossary: dict = {}
-        if config.get("glossary_content"):
-            glossary = json.loads(config["glossary_content"])
-            glossary_path.write_text(json.dumps(glossary, ensure_ascii=False, indent=2), encoding="utf-8")
-            emit(type="status", message=f"Using uploaded glossary ({len(glossary)} terms).", phase="extract")
-        elif glossary_path.exists():
-            glossary = json.loads(glossary_path.read_text(encoding="utf-8"))
-            emit(type="status", message=f"Loaded existing glossary ({len(glossary)} terms).", phase="extract")
+        # ── Build initial memory ──────────────────────────────────────────────
+        # Priority: uploaded glossary > existing book glossary > base glossary > empty
+        memory: dict = {}
 
-        keep_english: frozenset = frozenset(
-            k.lower() for k, v in glossary.items()
-            if v.get("translation", k) == k
-        ) if glossary else frozenset()
-
-        # Load base glossary if provided (used as seed context for all extraction passes)
-        base_raw: list[dict] = []
         if config.get("base_glossary_content"):
             try:
                 base_dict = json.loads(config["base_glossary_content"])
-                base_raw = [
-                    {"original": k, "translation": v["translation"],
-                     "type": v.get("type", "concept"), "source": v.get("source", "official")}
-                    for k, v in base_dict.items() if v.get("translation")
-                ]
-                emit(type="status", message=f"Loaded base glossary ({len(base_raw)} terms).", phase="extract")
+                for k, v in base_dict.items():
+                    if v.get("translation"):
+                        memory[k] = {
+                            "translation": v["translation"],
+                            "type": v.get("type", "concept"),
+                            "source": v.get("source", "official"),
+                        }
+                emit(type="status", message=f"Loaded base glossary ({len(memory)} terms).", phase="prepare")
             except Exception as exc:
-                emit(type="status", message=f"Base glossary load failed: {exc}", phase="extract")
+                emit(type="status", message=f"Base glossary load failed: {exc}", phase="prepare")
 
-        # ── EPUB input: preserve original structure, chapter-by-chapter ────────
+        if memory_path.exists():
+            saved = json.loads(memory_path.read_text(encoding="utf-8"))
+            # Merge saved memory but never overwrite official base glossary entries
+            for k, v in saved.items():
+                if k not in memory or memory[k].get("source") != "official":
+                    memory[k] = v
+            emit(type="status", message=f"Loaded translation memory ({len(memory)} terms).", phase="prepare")
+
+        def _keep_set() -> frozenset:
+            return frozenset(k.lower() for k, v in memory.items() if v.get("translation", k) == k)
+
+        keep_english = _keep_set()
+
+        def on_new_terms(terms: list[dict]) -> int:
+            added = 0
+            memory_lower = {k.lower() for k in memory}
+            for t in [x for x in terms if isinstance(x, dict)]:
+                orig = t.get("original", "").strip()
+                trans = t.get("translation", "").strip()
+                if not orig or not trans:
+                    continue
+                lo = orig.lower()
+                # Skip if already in memory (case-insensitive)
+                if lo in memory_lower:
+                    continue
+                # Skip if plural of an existing term
+                if (lo.endswith("s") and lo[:-1] in memory_lower) or \
+                   (lo.endswith("es") and lo[:-2] in memory_lower):
+                    continue
+                memory[orig] = {
+                    "translation": trans,
+                    "type": t.get("type", "concept"),
+                    "source": "tm",
+                }
+                memory_lower.add(lo)
+                added += 1
+            return added
+
+        # ── EPUB ──────────────────────────────────────────────────────────────
         if file_path.suffix.lower() == ".epub":
-            emit(type="status", message="Analyzing EPUB structure…", phase="extract")
+            emit(type="status", message="Analyzing EPUB structure…", phase="prepare")
             chapters = analyze_epub_structure(file_path)
             total = len(chapters)
-            emit(type="status", message=f"{total} chapters found", phase="extract")
-
-            # Generate glossary from EPUB text if none exists yet
-            if not glossary:
-                translatable = [ch for ch in chapters if ch.get("text")]
-
-                full_text = "\n\n".join(ch["text"] for ch in translatable)
-                cap_terms = extract_capitalized_terms(full_text)
-                from codex.pipeline.extract import chunk_pages as _chunk_pages
-                extract_chunk_size = config.get("extract_chunk_size", EXTRACT_CHUNK_WORDS)
-                epub_pages = [{"page": idx + 1, "text": ch["text"]} for idx, ch in enumerate(translatable)]
-                all_chunks = _chunk_pages(epub_pages, extract_chunk_size)
-                sample_pct = config.get("extract_sample_pct", 20) / 100.0
-                n_sample = max(2, int(len(all_chunks) * sample_pct))
-                n_bands = 5
-                per_band = max(1, n_sample // n_bands)
-                band_size = len(all_chunks) / n_bands
-                sampled = []
-                for b in range(n_bands):
-                    band = all_chunks[int(b * band_size): int((b + 1) * band_size)]
-                    if band:
-                        step = len(band) / per_band
-                        sampled += [band[int(i * step)] for i in range(per_band)]
-
-                cap_glossary_path = book_dir / "glossary_cap.json"
-                chunk_glossary_path = book_dir / "glossary_chunks.json"
-                cap_cached = cap_glossary_path.exists()
-                chunks_cached = chunk_glossary_path.exists()
-                pending = (0 if cap_cached else 1) + (0 if chunks_cached else len(sampled))
-                total_steps = max(1, pending)
-                done_steps = [0]
-                emit(type="total", total=total_steps, phase="extract")
-
-                def _step(label):
-                    done_steps[0] += 1
-                    emit(type="progress", done=done_steps[0], total=total_steps,
-                         pages=label, phase="extract")
-
-                # Pass 1: capitalized terms (base glossary as known context)
-                if cap_cached:
-                    cap_raw = json.loads(cap_glossary_path.read_text(encoding="utf-8"))
-                    emit(type="status", message=f"Loaded cap glossary ({len(cap_raw)} terms) from cache.", phase="extract")
-                else:
-                    emit(type="status", message=f"Found {len(cap_terms)} capitalized terms, translating…", phase="extract")
-                    cap_prompt = build_cap_extract_prompt(src_lang, tgt_lang)
-                    try:
-                        cap_raw = translate_cap_terms(
-                            client, cap_prompt, cap_terms, model=model, temperature=temperature,
-                            cancel=cancel, on_batch_done=lambda _: None,
-                            known_glossary=base_raw or None,
-                        )
-                    except InterruptedError:
-                        jobs[job_id]["status"] = "cancelled"
-                        emit(type="cancelled", message="Stopped.")
-                        return
-                    cap_glossary_path.write_text(json.dumps(cap_raw, ensure_ascii=False, indent=2), encoding="utf-8")
-                    _step("cap terms")
-
-                if cancel.is_set():
-                    jobs[job_id]["status"] = "cancelled"
-                    emit(type="cancelled", message="Stopped.")
-                    return
-
-                # Pass 2: sampled chunks (base + cap as known context)
-                if chunks_cached:
-                    chunk_raw = json.loads(chunk_glossary_path.read_text(encoding="utf-8"))
-                    emit(type="status", message=f"Loaded chunk glossary ({len(chunk_raw)} terms) from cache.", phase="extract")
-                else:
-                    chunk_raw = []
-                    emit(type="status", message=f"Sampling {len(sampled)} segments for context extraction…", phase="extract")
-                    extract_prompt = build_extract_prompt(src_lang, tgt_lang)
-                    chunk_known = base_raw + cap_raw
-                    for chunk in sampled:
-                        if cancel.is_set():
-                            jobs[job_id]["status"] = "cancelled"
-                            emit(type="cancelled", message="Stopped.")
-                            return
-                        try:
-                            _, terms = extract_terms_one(client, extract_prompt, chunk, model=model, temperature=temperature, cancel=cancel, known_glossary=chunk_known)
-                            chunk_raw.extend(terms)
-                        except InterruptedError:
-                            jobs[job_id]["status"] = "cancelled"
-                            emit(type="cancelled", message="Stopped.")
-                            return
-                        _step(f"pages {chunk['start_page']}–{chunk['end_page']}")
-                    chunk_glossary_path.write_text(json.dumps(chunk_raw, ensure_ascii=False, indent=2), encoding="utf-8")
-
-                glossary = merge_terms(base_raw + cap_raw + chunk_raw)
-                n_conflicts = sum(1 for v in glossary.values() if v.get("conflict"))
-                msg = (f"Resolving {n_conflicts} conflicts across {len(glossary)} terms…"
-                       if n_conflicts else f"No conflicts — {len(glossary)} terms ready.")
-                emit(type="status", message=msg, phase="resolve")
-
-                if n_conflicts and not cancel.is_set():
-                    resolve_prompt = build_resolve_prompt(src_lang, tgt_lang)
-                    glossary = auto_resolve(client, resolve_prompt, glossary, model=model, temperature=temperature, cancel=cancel)
-
-                glossary_path.write_text(json.dumps(glossary, ensure_ascii=False, indent=2), encoding="utf-8")
-                emit(type="status", message=f"Glossary saved ({len(glossary)} terms).", phase="resolve")
-
-                keep_english = frozenset(
-                    k.lower() for k, v in glossary.items()
-                    if v.get("translation", k) == k
-                )
-
-            system_prompt = build_system_prompt(src_lang, tgt_lang, glossary or None)
+            emit(type="status", message=f"{total} chapters found.", phase="prepare")
 
             translations: dict[str, str] = {}
             done = 0
@@ -204,10 +112,24 @@ def translation_worker(
             emit(type="total", total=total, phase="translate")
             emit(type="status", message="Checking resumed chapters…", phase="translate")
             for ch in chapters:
+                if cancel.is_set():
+                    jobs[job_id]["status"] = "cancelled"
+                    emit(type="cancelled", message="Stopped.")
+                    return
                 safe = Path(ch["filename"]).stem
                 txt_path = chapters_dir / f"{safe}.txt"
                 if txt_path.exists():
-                    translations[ch["filename"]] = txt_path.read_text(encoding="utf-8")
+                    saved_text = txt_path.read_text(encoding="utf-8")
+                    # A restart between the translate write and the correction
+                    # write leaves uncorrected text on disk — re-check on resume.
+                    corrected = correct_translation(
+                        client, model, saved_text, tgt_lang, src_lang, keep_english,
+                        glossary=memory, cancel=cancel,
+                    )
+                    if corrected != saved_text:
+                        txt_path.write_text(corrected, encoding="utf-8")
+                        emit(type="correction", chapter=f"[resumed] {ch['title']}", phase="translate")
+                    translations[ch["filename"]] = corrected
                     done += 1
                     emit(type="progress", done=done, total=total,
                          chapter=f"[resumed] {ch['title']}", phase="translate")
@@ -216,35 +138,61 @@ def translation_worker(
 
             if pending:
                 emit(type="status",
-                     message=f"Translating {len(pending)} chapters ({workers} workers)…",
+                     message=f"Translating {len(pending)} chapters (memory: {len(memory)} terms)…",
                      phase="translate")
 
-                def translate_chapter_item(item):
+                for item in pending:
+                    if cancel.is_set():
+                        jobs[job_id]["status"] = "cancelled"
+                        emit(type="cancelled", message="Stopped.")
+                        return
+
+                    ch = item["ch"]
+                    system_prompt = build_system_prompt(src_lang, tgt_lang, memory or None)
+
+                    def _on_terms(terms):
+                        added = on_new_terms(terms)
+                        if added:
+                            nonlocal keep_english
+                            keep_english = _keep_set()
+                            memory_path.write_text(json.dumps(memory, ensure_ascii=False, indent=2), encoding="utf-8")
+                            emit(type="status",
+                                 message=f"+{added} new terms added to memory ({len(memory)} total).",
+                                 phase="translate")
+
+                    def _on_para_count(src, tgt):
+                        emit(type="para_count", src=src, tgt=tgt,
+                             chapter=ch["title"], phase="translate")
+
                     result = translate_chunk(
                         client, system_prompt,
-                        {"id": 0, "text": item["ch"]["text"]},
-                        tgt_lang, model=model, temperature=temperature,
-                        keep=keep_english, cancel=cancel,
+                        {"id": 0, "text": ch["text"]},
+                        tgt_lang, src_lang=src_lang,
+                        model=model, temperature=temperature,
+                        cancel=cancel,
+                        on_new_terms=_on_terms,
+                        on_para_count=_on_para_count,
+                        glossary=memory,
                     )
-                    return item, result
+                    item["txt_path"].write_text(result, encoding="utf-8")
 
-                with ThreadPoolExecutor(max_workers=workers) as pool:
-                    futures = {pool.submit(translate_chapter_item, item): item for item in pending}
-                    for future in as_completed(futures):
-                        if cancel.is_set():
-                            for f in futures:
-                                f.cancel()
-                            jobs[job_id]["status"] = "cancelled"
-                            emit(type="cancelled", message="Stopped.")
-                            return
-                        item, result = future.result()
-                        ch = item["ch"]
-                        item["txt_path"].write_text(result, encoding="utf-8")
-                        with lock:
-                            translations[ch["filename"]] = result
-                            done += 1
-                            emit(type="progress", done=done, total=total,
-                                 chapter=ch["title"], phase="translate")
+                    translations[ch["filename"]] = result
+                    done += 1
+                    emit(type="progress", done=done, total=total,
+                         chapter=ch["title"], phase="translate")
+
+                    # Correction phase: fix any untranslated English lines
+                    corrected = correct_translation(
+                        client, model, result, tgt_lang, src_lang, keep_english,
+                        glossary=memory, cancel=cancel,
+                    )
+                    if corrected != result:
+                        item["txt_path"].write_text(corrected, encoding="utf-8")
+                        translations[ch["filename"]] = corrected
+                        emit(type="correction", chapter=ch["title"], phase="translate")
+
+            memory_path.write_text(json.dumps(memory, ensure_ascii=False, indent=2), encoding="utf-8")
+            emit(type="status", message=f"Memory saved ({len(memory)} terms).", phase="translate")
 
             emit(type="status", message="Generating output file…", phase="generate")
             lang = LANG_NAMES_EN.get(tgt_lang, tgt_lang)
@@ -252,146 +200,53 @@ def translation_worker(
             out_path = jobs_dir / f"{stem}_{lang}.epub"
             result_path = build_translated_epub(file_path, translations, out_path)
 
-        # ── Non-EPUB: full glossary pipeline ───────────────────────────────────
+        # ── Non-EPUB ──────────────────────────────────────────────────────────
         else:
-            emit(type="status", message="Reading file…", phase="extract")
+            emit(type="status", message="Reading file…", phase="prepare")
             pages = extract_text(file_path)
-            extract_chunk_size = config.get("extract_chunk_size", EXTRACT_CHUNK_WORDS)
             chunk_size = config.get("chunk_size", CHUNK_SIZE_WORDS)
 
-            if not glossary:
-                full_text = "\n\n".join(p["text"] for p in pages)
-                cap_terms = extract_capitalized_terms(full_text)
-                all_chunks = chunk_pages(pages, extract_chunk_size)
-                sample_pct = config.get("extract_sample_pct", 20) / 100.0
-                n_sample = max(2, int(len(all_chunks) * sample_pct))
-                n_bands = 5
-                per_band = max(1, n_sample // n_bands)
-                band_size = len(all_chunks) / n_bands
-                sampled = []
-                for b in range(n_bands):
-                    band = all_chunks[int(b * band_size): int((b + 1) * band_size)]
-                    if band:
-                        step = len(band) / per_band
-                        sampled += [band[int(i * step)] for i in range(per_band)]
+            translate_chunks = chunk_pages(pages, chunk_size, with_overlap=True)
+            total_translate = len(translate_chunks)
+            emit(type="total", total=total_translate, phase="translate")
+            emit(type="status",
+                 message=f"Translating {total_translate} segments (memory: {len(memory)} terms)…",
+                 phase="translate")
 
-                cap_glossary_path = book_dir / "glossary_cap.json"
-                chunk_glossary_path = book_dir / "glossary_chunks.json"
-                cap_cached = cap_glossary_path.exists()
-                chunks_cached = chunk_glossary_path.exists()
-                pending = (0 if cap_cached else 1) + (0 if chunks_cached else len(sampled))
-                total_steps = max(1, pending)
-                done_steps = [0]
-                emit(type="total", total=total_steps, phase="extract")
+            completed = {}
+            done_translate = [0]
 
-                def _step(label):
-                    done_steps[0] += 1
-                    emit(type="progress", done=done_steps[0], total=total_steps,
-                         pages=label, phase="extract")
-
-                # Pass 1: capitalized terms (base glossary as known context)
-                if cap_cached:
-                    cap_raw = json.loads(cap_glossary_path.read_text(encoding="utf-8"))
-                    emit(type="status", message=f"Loaded cap glossary ({len(cap_raw)} terms) from cache.", phase="extract")
-                else:
-                    emit(type="status", message=f"Found {len(cap_terms)} capitalized terms, translating…", phase="extract")
-                    cap_prompt = build_cap_extract_prompt(src_lang, tgt_lang)
-                    try:
-                        cap_raw = translate_cap_terms(
-                            client, cap_prompt, cap_terms, model=model, temperature=temperature,
-                            cancel=cancel, on_batch_done=lambda _: None,
-                            known_glossary=base_raw or None,
-                        )
-                    except InterruptedError:
-                        jobs[job_id]["status"] = "cancelled"
-                        emit(type="cancelled", message="Stopped.")
-                        return
-                    cap_glossary_path.write_text(json.dumps(cap_raw, ensure_ascii=False, indent=2), encoding="utf-8")
-                    _step("cap terms")
-
+            for chunk in translate_chunks:
                 if cancel.is_set():
                     jobs[job_id]["status"] = "cancelled"
                     emit(type="cancelled", message="Stopped.")
                     return
 
-                # Pass 2: sampled chunks (base + cap as known context)
-                if chunks_cached:
-                    chunk_raw = json.loads(chunk_glossary_path.read_text(encoding="utf-8"))
-                    emit(type="status", message=f"Loaded chunk glossary ({len(chunk_raw)} terms) from cache.", phase="extract")
-                else:
-                    chunk_raw = []
-                    emit(type="status", message=f"Sampling {len(sampled)} segments for context extraction…", phase="extract")
-                    extract_prompt = build_extract_prompt(src_lang, tgt_lang)
-                    chunk_known = base_raw + cap_raw
-                    for chunk in sampled:
-                        if cancel.is_set():
-                            jobs[job_id]["status"] = "cancelled"
-                            emit(type="cancelled", message="Stopped.")
-                            return
-                        try:
-                            _, terms = extract_terms_one(client, extract_prompt, chunk, model=model, temperature=temperature, cancel=cancel, known_glossary=chunk_known)
-                            chunk_raw.extend(terms)
-                        except InterruptedError:
-                            jobs[job_id]["status"] = "cancelled"
-                            emit(type="cancelled", message="Stopped.")
-                            return
-                        _step(f"pages {chunk['start_page']}–{chunk['end_page']}")
-                    chunk_glossary_path.write_text(json.dumps(chunk_raw, ensure_ascii=False, indent=2), encoding="utf-8")
+                system_prompt = build_system_prompt(src_lang, tgt_lang, memory or None)
+                new_terms_buf: list[dict] = []
 
-                glossary = merge_terms(base_raw + cap_raw + chunk_raw)
-                n_conflicts = sum(1 for v in glossary.values() if v.get("conflict"))
-                msg = (f"Resolving {n_conflicts} conflicts across {len(glossary)} terms…"
-                       if n_conflicts else f"No conflicts — {len(glossary)} terms ready.")
-                emit(type="status", message=msg, phase="resolve")
+                def _on_terms_buf(terms, buf=new_terms_buf):
+                    buf.extend(terms)
 
-                if n_conflicts and not cancel.is_set():
-                    resolve_prompt = build_resolve_prompt(src_lang, tgt_lang)
-                    glossary = auto_resolve(client, resolve_prompt, glossary, model=model, temperature=temperature, cancel=cancel)
-
-                glossary_path.write_text(json.dumps(glossary, ensure_ascii=False, indent=2), encoding="utf-8")
-                emit(type="status", message=f"Glossary saved ({len(glossary)} terms).", phase="resolve")
-
-                keep_english = frozenset(
-                    k.lower() for k, v in glossary.items()
-                    if v.get("translation", k) == k
-                )
-
-            if cancel.is_set():
-                jobs[job_id]["status"] = "cancelled"
-                emit(type="cancelled", message="Stopped.")
-                return
-
-            translate_chunks = chunk_pages(pages, chunk_size, with_overlap=True)
-            total_translate = len(translate_chunks)
-            emit(type="total", total=total_translate, phase="translate")
-            emit(type="status", message=f"Translating {total_translate} segments…", phase="translate")
-
-            system_prompt = build_system_prompt(src_lang, tgt_lang, glossary)
-            completed = {}
-            done_translate = [0]
-
-            def do_translate(chunk):
-                return chunk, translate_chunk(
+                translation = translate_chunk(
                     client, system_prompt, chunk, tgt_lang,
                     model=model, temperature=temperature,
-                    keep=keep_english, cancel=cancel,
+                    cancel=cancel,
+                    on_new_terms=_on_terms_buf,
+                    glossary=memory,
                 )
 
-            with ThreadPoolExecutor(max_workers=workers) as pool:
-                futures = {pool.submit(do_translate, c): c for c in translate_chunks}
-                for future in as_completed(futures):
-                    if cancel.is_set():
-                        for f in futures:
-                            f.cancel()
-                        jobs[job_id]["status"] = "cancelled"
-                        emit(type="cancelled", message="Stopped.")
-                        return
-                    chunk, translation = future.result()
-                    with lock:
-                        done_translate[0] += 1
-                        completed[str(chunk["id"])] = translation
-                        emit(type="progress", done=done_translate[0], total=total_translate,
-                             pages=f"{chunk['start_page']}–{chunk['end_page']}", phase="translate")
+                added = on_new_terms(new_terms_buf)
+                if added:
+                    keep_english = _keep_set()
+                    memory_path.write_text(json.dumps(memory, ensure_ascii=False, indent=2), encoding="utf-8")
+
+                done_translate[0] += 1
+                completed[str(chunk["id"])] = translation
+                emit(type="progress", done=done_translate[0], total=total_translate,
+                     pages=f"{chunk['start_page']}–{chunk['end_page']}", phase="translate")
+
+            memory_path.write_text(json.dumps(memory, ensure_ascii=False, indent=2), encoding="utf-8")
 
             emit(type="status", message="Generating output file…", phase="generate")
             ext = {"epub": ".epub", "pdf": ".pdf", "html": ".html", "txt": ".txt"}[config["output_format"]]

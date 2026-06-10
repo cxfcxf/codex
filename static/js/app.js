@@ -28,6 +28,7 @@ async function selectFile(file) {
   const badge = $('fileBadge');
   badge.textContent = `${file.name}  ·  ${mb} MB`;
   badge.style.display = 'block';
+  $('doneCard').classList.remove('visible');
   btn.disabled = false;
   btn.textContent = 'Translate';
   analyzeFile(file);
@@ -69,15 +70,37 @@ function applyAutoSettings(s) {
   updateSettingsSummary();
 }
 
-// ── Subtabs (Manuscript / Apparatus) ──
-function switchPane(paneId) {
-  document.querySelectorAll('.subtab').forEach(t =>
-    t.classList.toggle('active', t.dataset.pane === paneId));
-  document.querySelectorAll('.subpane').forEach(p =>
-    p.classList.toggle('active', p.id === paneId));
+// ── The book: open the cover, flip the leaf ──
+const codexEl = $('codex');
+const VIEW_KEY = 'codex_view';
+
+function saveView() {
+  try {
+    sessionStorage.setItem(VIEW_KEY, JSON.stringify({
+      open: codexEl.classList.contains('open'),
+      flipped: codexEl.classList.contains('flipped'),
+    }));
+  } catch {}
 }
-document.querySelectorAll('.subtab').forEach(t =>
-  t.addEventListener('click', () => switchPane(t.dataset.pane)));
+
+function openBook() { codexEl.classList.add('open'); saveView(); }
+
+$('bookCover').addEventListener('click', openBook);
+$('bookCover').addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openBook(); }
+});
+$('flipToAudio').addEventListener('click', () => { codexEl.classList.add('flipped'); saveView(); });
+$('flipToTrans').addEventListener('click', () => { codexEl.classList.remove('flipped'); saveView(); });
+
+// restore the saved view (per tab) without replaying the animations
+try {
+  const v = JSON.parse(sessionStorage.getItem(VIEW_KEY) || '{}');
+  if (v.open) {
+    codexEl.classList.add('instant', 'open');
+    if (v.flipped) codexEl.classList.add('flipped');
+    requestAnimationFrame(() => requestAnimationFrame(() => codexEl.classList.remove('instant')));
+  }
+} catch {}
 
 const SETTINGS = [
   { key: 'Workers', rangeId: 'rangeWorkers', numId: 'numWorkers', hintId: 'hintWorkers' },
@@ -157,6 +180,7 @@ async function startTranslation() {
   $('doneCard').classList.remove('visible');
   $('errorCard').classList.remove('visible');
   $('progLog').innerHTML = '';
+  $('progFill').classList.remove('complete');
   $('progFill').style.width = '0%';
   $('progCount').textContent = '';
   $('progPct').textContent = '';
@@ -230,6 +254,7 @@ function setPhaseComplete() {
   });
   $('progBarWrap').classList.remove('scanning');
   $('progMeta').classList.remove('hidden');
+  $('progFill').classList.add('complete');
   $('progFill').style.width = '100%';
   $('progPct').textContent = '100%';
   _currentPhase = null;
@@ -314,16 +339,16 @@ function resetBtn() {
 }
 
 function showDone(jobId, filename, mb) {
-  switchPane('paneManuscript');
+  codexEl.classList.remove('flipped');
+  saveView();
+  resetBtn();
   $('doneCard').classList.add('visible');
   $('doneSub').textContent = `${filename}  ·  ${mb} MB`;
   $('btnDownload').href = `/api/download/${jobId}`;
   addLog(`❦ Opus complete — ${filename} (${mb} MB)`, 'done');
-  resetBtn();
 }
 
 function showError(msg) {
-  switchPane('paneManuscript');
   $('errorCard').textContent = '⚠ ' + msg;
   $('errorCard').classList.add('visible');
   resetBtn();
@@ -367,14 +392,27 @@ async function selectTTSBook(book) {
   });
 }
 
-$('ttsFile').addEventListener('change', () => {
-  const f = $('ttsFile').files[0];
-  if (!f) return;
+const ttsDropZone = $('ttsDropZone');
+
+function selectTTSFile(f) {
   ttsFileSel = f;
-  $('ttsFileName').textContent = f.name;
-  $('ttsFileLabel').classList.add('has-file');
+  const badge = $('ttsFileBadge');
+  badge.textContent = `${f.name}  ·  ${(f.size / 1024 / 1024).toFixed(2)} MB`;
+  badge.style.display = 'block';
   resetTTSBtn();
   selectTTSBook(f.name.replace(/\.[^.]+$/, ''));
+}
+
+$('ttsFile').addEventListener('change', () => {
+  if ($('ttsFile').files[0]) selectTTSFile($('ttsFile').files[0]);
+});
+ttsDropZone.addEventListener('dragover', e => { e.preventDefault(); ttsDropZone.classList.add('drag-over'); });
+ttsDropZone.addEventListener('dragleave', () => ttsDropZone.classList.remove('drag-over'));
+ttsDropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  ttsDropZone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f && /\.epub$/i.test(f.name)) selectTTSFile(f);
 });
 
 $('btnTTS').addEventListener('click', async () => {
@@ -383,6 +421,7 @@ $('btnTTS').addEventListener('click', async () => {
   $('btnTTS').textContent = 'Generating…';
   $('ttsProgressWrap').style.display = '';
   $('ttsLog').innerHTML = '';
+  $('ttsFill').classList.remove('complete');
   $('ttsFill').style.width = '0%';
   $('ttsCount').textContent = '';
   $('btnTTSStop').disabled = false;
@@ -432,6 +471,9 @@ function listenTTS(jobId) {
     }
     else if (ev.type === 'done') {
       const warn = ev.missing ? ` · ${ev.missing} chapters failed — run again to retry` : '';
+      $('ttsFill').style.width = '100%';
+      if (!ev.missing) $('ttsFill').classList.add('complete');
+      $('ttsCount').textContent = `${ev.chapters} / ${ev.chapters} chapters · done`;
       ttsLog(`Audiobook complete — ${ev.chapters} chapters${warn}`, ev.missing ? 'err' : 'done');
       loadTTSLibrary();
       resetTTSBtn();

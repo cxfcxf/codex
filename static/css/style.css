@@ -106,13 +106,31 @@ body {
   margin-bottom: 14px;
 }
 
-/* ── The open codex ───────────────────────────────────────────────── */
+/* ── The codex — a real book: closed cover, two spreads, turning leaf ─ */
 .codex {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr);
   width: 100%; max-width: 1230px;
   align-items: stretch;
+  perspective: 2600px;
+  transition: transform 1.15s cubic-bezier(0.5, 0.05, 0.2, 1);
+  animation: fadein 0.9s ease 0.2s backwards;
 }
+@keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+
+/* closed: only the cover shows, centered (cover sits over the right half) */
+.codex:not(.open) { transform: translateX(calc(-25% - 11px)); }
+.page-left, .spine { transition: opacity 0.7s ease 0.4s; }
+.codex:not(.open) .page-left,
+.codex:not(.open) .spine { opacity: 0; }
+
+/* restoring a saved view — no animation */
+.codex.instant,
+.codex.instant .leaf,
+.codex.instant .book-cover,
+.codex.instant .page-left,
+.codex.instant .spine { transition: none !important; }
 
 .page {
   position: relative;
@@ -176,6 +194,118 @@ body {
   box-shadow: 0 0 6px rgba(0,0,0,0.8);
   opacity: 0.8;
 }
+
+/* ── The turning leaf ─────────────────────────────────────────────────
+   Occupies the right half; rotates around the spine centre like a real
+   sheet. Front face = Apparatus (spread 1 right); back face = Audiobook
+   (spread 2 left). Flipping reveals the Lectorium base underneath.   */
+.leaf {
+  position: absolute; top: 0; bottom: 0;
+  left: calc(50% + 22px);
+  width: calc(50% - 22px);
+  z-index: 10;
+  transform-style: preserve-3d;
+  transform-origin: -22px 50%;
+  transition: transform 1.15s cubic-bezier(0.45, 0.05, 0.18, 1);
+}
+.codex.flipped .leaf { transform: rotateY(-180deg); }
+
+.leaf-face {
+  position: absolute; inset: 0; height: auto;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  overflow: hidden;
+}
+.leaf-front { border-radius: 2px 10px 10px 2px; }
+.leaf-back  { transform: rotateY(180deg); border-radius: 10px 2px 2px 10px; }
+
+/* gutter shadow toward the spine on each face */
+.leaf-front::after, .leaf-back::after {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 56px; pointer-events: none;
+}
+.leaf-front::after { left: 0;  background: linear-gradient(270deg, transparent, rgba(0,0,0,0.34)); border-radius: 2px 0 0 2px; }
+.leaf-back::after  { right: 0; background: linear-gradient(90deg, transparent, rgba(0,0,0,0.34)); border-radius: 0 2px 2px 0; }
+
+/* only the face currently shown takes clicks */
+.leaf-back { pointer-events: none; }
+.codex.flipped .leaf-front { pointer-events: none; }
+.codex.flipped .leaf-back  { pointer-events: auto; }
+
+/* ── The front cover ──────────────────────────────────────────────── */
+.book-cover {
+  position: absolute; top: 0; bottom: 0;
+  left: calc(50% + 22px);
+  width: calc(50% - 22px);
+  z-index: 30;
+  transform-origin: -22px 50%;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  border-radius: 4px 12px 12px 4px;
+  border: 1px solid #3c2c15;
+  background:
+    radial-gradient(ellipse 90% 60% at 50% 26%, rgba(216, 162, 74, 0.07), transparent 70%),
+    linear-gradient(155deg, #2b1d0e, #1a1108 55%, #110b05);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.6),
+    inset 0 0 70px rgba(0, 0, 0, 0.55),
+    4px 4px 0 -1px #0c0a06, 4px 4px 0 0 #564a2e,
+    8px 8px 0 -1px #0c0a06, 8px 8px 0 0 #463c25,
+    12px 12px 0 -1px #0c0a06, 12px 12px 0 0 #38301d,
+    18px 26px 60px rgba(0, 0, 0, 0.65);
+  transition:
+    transform 1.15s cubic-bezier(0.5, 0.05, 0.2, 1),
+    opacity 0.55s ease 0.45s,
+    visibility 0s linear 1.15s;
+}
+.codex.open .book-cover {
+  transform: rotateY(-180deg);
+  opacity: 0; visibility: hidden; pointer-events: none;
+}
+
+.cover-frame {
+  width: calc(100% - 64px); height: calc(100% - 64px);
+  border: 1px solid var(--gold-deep);
+  outline: 1px solid rgba(201, 160, 90, 0.22); outline-offset: 7px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 16px; text-align: center;
+  transition: border-color 0.25s;
+}
+.book-cover:hover .cover-frame { border-color: var(--gold); }
+.book-cover:hover .cover-sigil { text-shadow: 0 0 30px var(--gold-glow), 0 0 60px var(--gold-glow); }
+
+.cover-sigil {
+  color: var(--gold); font-size: 32px;
+  text-shadow: 0 0 22px var(--gold-glow);
+  transition: text-shadow 0.3s;
+}
+.cover-title {
+  font-family: var(--deco); font-weight: 900;
+  font-size: clamp(2.6rem, 5vw, 4.2rem); letter-spacing: 0.14em;
+  background: linear-gradient(175deg, #f4e3b6 8%, var(--gold) 42%, #7d5e28 78%, #c9a05a 100%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+}
+.cover-sub {
+  font-family: var(--carved); font-weight: 500;
+  font-size: 11px; letter-spacing: 0.4em; text-transform: uppercase;
+  color: var(--vellum-dim);
+}
+.cover-rule {
+  display: flex; align-items: center; gap: 12px;
+  width: 180px; color: var(--gold-deep); font-size: 12px;
+}
+.cover-rule span { flex: 1; height: 1px; background: linear-gradient(90deg, transparent, var(--gold-deep)); }
+.cover-rule span:last-child { background: linear-gradient(90deg, var(--gold-deep), transparent); }
+.cover-hint {
+  margin-top: 30px;
+  font-family: var(--carved); font-size: 10px; font-weight: 500;
+  letter-spacing: 0.34em; text-transform: uppercase;
+  color: var(--gold);
+  animation: hintPulse 2.8s ease-in-out infinite;
+}
+@keyframes hintPulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 0.95; } }
 
 /* ── Page headings ────────────────────────────────────────────────── */
 .page-heading {
@@ -244,6 +374,10 @@ body {
 }
 .drop-sub { font-size: 13.5px; font-style: italic; color: var(--vellum-dim); }
 
+/* compact variant (audiobook page) */
+.drop-zone-sm { padding: 26px 20px 24px; }
+.drop-zone-sm .drop-icon { width: 40px; height: 40px; margin-bottom: 11px; }
+
 .file-badge {
   display: none; margin: 16px auto 0; padding: 7px 16px; width: fit-content; max-width: 100%;
   border: 1px solid var(--gold-deep); border-radius: 2px;
@@ -307,33 +441,32 @@ select option { background: #15100a; color: var(--vellum); }
   box-shadow: 0 0 14px rgba(216, 162, 74, 0.08);
 }
 
-/* ── Subtabs (Manuscript / Apparatus) ─────────────────────────────── */
-.subtabs {
-  display: flex; align-items: center; gap: 2px;
-  border-bottom: 1px solid var(--line-strong);
-  margin-bottom: 22px;
-}
-.subtab {
-  margin-bottom: -1px;
-  padding: 7px 15px 9px;
-  background: none; border: none;
-  border-bottom: 2px solid transparent;
+/* ── Page furniture: flip buttons, heading notes, fillers ─────────── */
+.flip-btn {
+  align-self: center;
+  padding: 6px 13px;
+  background: linear-gradient(180deg, rgba(216, 162, 74, 0.14), rgba(216, 162, 74, 0.04));
+  border: 1px solid var(--gold-deep); border-radius: 2px;
   font-family: var(--carved); font-weight: 600;
-  font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase;
-  color: var(--vellum-faint);
-  cursor: pointer; transition: color 0.15s, border-color 0.15s;
+  font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--gold);
+  cursor: pointer; white-space: nowrap;
+  transition: all 0.18s;
 }
-.subtab:hover { color: var(--vellum); }
-.subtab.active { color: var(--gold); border-bottom-color: var(--gold-deep); }
-.subtab-summary {
-  margin-left: auto; padding-right: 2px;
+.flip-btn:hover {
+  background: linear-gradient(180deg, #d9b26b, #a8813c);
+  color: #1c1204;
+  box-shadow: 0 0 18px var(--gold-glow);
+}
+.leaf-front .flip-btn { margin-left: 12px; }
+.leaf-back .flip-btn { margin-right: 10px; }
+
+.heading-note {
+  margin-left: auto;
   font-family: var(--mono); font-size: 10px;
   color: var(--vellum-faint);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.subpane { display: none; }
-.subpane.active { display: block; }
-.page-left .page-body { overflow: hidden; }
 
 /* ── Apparatus (settings) ─────────────────────────────────────────── */
 .settings-panel {
@@ -384,7 +517,6 @@ select option { background: #15100a; color: var(--vellum); }
 }
 .glossary-upload-btn:hover { border-color: var(--gold-deep); color: var(--gold); }
 .glossary-upload-btn.has-file { border-color: var(--gold-deep); color: var(--gold-bright); background: rgba(216, 162, 74, 0.06); }
-.tts-file-btn { width: 100%; justify-content: center; padding: 10px 12px; min-width: 0; }
 .glossary-upload-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .config > div { min-width: 0; }
 
@@ -490,6 +622,12 @@ select option { background: #15100a; color: var(--vellum); }
 }
 @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(200%); } }
 
+/* finished — the bar settles to verdigris and stops shimmering */
+.prog-bar-fill.complete {
+  background: linear-gradient(90deg, #4f7a5e, var(--verdigris) 55%, #a9c9b4);
+}
+.prog-bar-fill.complete::after { animation: none; }
+
 .prog-bar-wrap.scanning .prog-bar-fill { width: 100% !important; opacity: 0.16; transition: none; }
 .prog-bar-wrap.scanning::after {
   content: ''; position: absolute; top: 0; left: 0; width: 38%; height: 100%;
@@ -520,29 +658,44 @@ select option { background: #15100a; color: var(--vellum); }
 .log-line.done { color: var(--verdigris); }
 .log-line.err { color: var(--oxblood); }
 
+/* on the leaf pages the console fills everything below the controls */
+.leaf-face .page-body { flex: 0 0 auto; }
+.leaf-face .page-console {
+  flex: 1; min-height: 0;
+  display: flex; flex-direction: column;
+}
+.leaf-face .page-console > * { flex-shrink: 0; }
+.leaf-face .prog-log { flex: 1; height: auto; min-height: 130px; }
+
 /* ── Done & error ─────────────────────────────────────────────────── */
 .done-card {
   display: none;
-  margin: -6px 0 22px; padding: 13px 16px;
+  margin-top: 24px; padding: 26px 20px;
   border: 1px solid var(--verdigris); border-radius: 2px;
-  background: linear-gradient(180deg, rgba(127, 169, 139, 0.08), rgba(127, 169, 139, 0.02));
-  align-items: center; gap: 14px;
+  background: linear-gradient(180deg, rgba(127, 169, 139, 0.09), rgba(127, 169, 139, 0.02));
+  text-align: center;
 }
-.done-card.visible { display: flex; animation: rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1); }
-.done-icon { font-size: 22px; color: var(--verdigris); flex-shrink: 0; }
-.done-text { flex: 1; min-width: 0; }
+/* fills everything left beneath the translate button */
+.done-card.visible {
+  display: flex; flex: 1 1 auto; min-height: 0;
+  flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px;
+  animation: rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.done-icon { font-size: 30px; color: var(--verdigris); margin-bottom: 6px; }
 .done-title {
   font-family: var(--carved); font-weight: 600;
-  font-size: 13px; letter-spacing: 0.18em; text-transform: uppercase;
-  color: var(--vellum); margin-bottom: 3px;
+  font-size: 17px; letter-spacing: 0.22em; text-transform: uppercase;
+  color: var(--vellum); margin-bottom: 4px;
 }
 .done-sub {
-  font-family: var(--mono); font-size: 10.5px; color: var(--vellum-dim);
+  max-width: 100%;
+  font-family: var(--mono); font-size: 11px; color: var(--vellum-dim);
+  margin-bottom: 16px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .btn-download {
-  flex-shrink: 0;
-  display: inline-block; padding: 10px 20px;
+  display: inline-block; padding: 11px 30px;
   background: linear-gradient(180deg, #8fbb9d, #5d8a6c);
   border: 1px solid #3c5c47; border-radius: 2px;
   font-family: var(--carved); font-weight: 600;
@@ -561,15 +714,6 @@ select option { background: #15100a; color: var(--vellum); }
 .error-card.visible { display: block; }
 
 /* ── Lectorium (player + chapter TOC) ─────────────────────────────── */
-.listen-heading {
-  display: flex; align-items: center; gap: 13px;
-  margin: 26px 0 16px;
-  font-family: var(--carved); font-weight: 500;
-  font-size: 11px; letter-spacing: 0.32em; text-transform: uppercase;
-  color: var(--vellum-dim);
-}
-.listen-heading .rule { flex: 1; height: 1px; background: var(--line-strong); }
-
 .player {
   display: flex; align-items: center; gap: 12px;
   padding: 10px 14px;
@@ -634,7 +778,7 @@ select option { background: #15100a; color: var(--vellum); }
 
 .tts-library {
   display: flex; flex-direction: column; gap: 2px;
-  flex: 1 1 auto; min-height: 160px; max-height: 480px;
+  flex: 1 1 auto; min-height: 160px;
   overflow-y: auto;
   margin-top: 14px; padding: 10px 12px;
   background: var(--page-deep);
@@ -699,9 +843,15 @@ footer {
 }
 footer span { color: var(--gold-deep); }
 
-/* ── Responsive: pages stack, spine becomes a rule ───────────────── */
+/* ── Responsive: book flattens, pages stack, spine becomes a rule ── */
 @media (max-width: 980px) {
-  .codex { grid-template-columns: 1fr; max-width: 640px; }
+  .codex {
+    grid-template-columns: 1fr; max-width: 640px;
+    perspective: none; transform: none !important;
+  }
+  .book-cover { display: none; }
+  .codex:not(.open) .page-left,
+  .codex:not(.open) .spine { opacity: 1; }
   .spine {
     height: 26px; flex-direction: row;
     border-left: 1px solid var(--page-edge); border-right: 1px solid var(--page-edge);
@@ -709,8 +859,18 @@ footer span { color: var(--gold-deep); }
     background: linear-gradient(180deg, #060402, #1c1409 50%, #060402);
   }
   .spine i { width: 22px; height: 3px; }
-  .page-left { border-radius: 10px 10px 2px 2px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-  .page-right { border-radius: 2px 2px 10px 10px; box-shadow: 0 14px 34px rgba(0,0,0,0.5); }
+  .leaf { position: static; transform: none !important; width: auto; }
+  .leaf-face {
+    position: static; transform: none;
+    backface-visibility: visible; -webkit-backface-visibility: visible;
+    pointer-events: auto !important;
+    margin-top: 26px;
+  }
+  .leaf-front::after, .leaf-back::after { display: none; }
+  .flip-btn { display: none; }
+  .page-left, .page-right, .leaf-face {
+    border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  }
   .page-left::after, .page-right::after { display: none; }
   .page { height: auto; }
 }

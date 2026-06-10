@@ -20,10 +20,10 @@
   <div class="rule-ornament"><span class="rule"></span><span class="fleuron">✠</span><span class="rule"></span></div>
 </header>
 
-<main class="codex">
+<main class="codex" id="codex">
 
-  <!-- ══ LEFT FOLIO — TRANSLATION ══ -->
-  <section class="page page-left reveal d1">
+  <!-- ══ SPREAD 1 · LEFT (static base) — TRANSLATION ══ -->
+  <section class="page page-left">
     <div class="page-heading">
       <span class="folio-num">I</span>
       <h2>Translation</h2>
@@ -31,14 +31,6 @@
     </div>
 
     <div class="page-body">
-
-    <div class="subtabs">
-      <button type="button" class="subtab active" data-pane="paneManuscript">Manuscript</button>
-      <button type="button" class="subtab" data-pane="paneApparatus">Apparatus</button>
-      <span class="subtab-summary" id="settingsSummary"></span>
-    </div>
-
-    <div class="subpane active" id="paneManuscript">
 
     <div class="drop-zone" id="dropZone">
       <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
@@ -51,15 +43,6 @@
       <div class="drop-title">Place your manuscript here</div>
       <div class="drop-sub">or click to browse &nbsp;·&nbsp; PDF · EPUB · TXT · DOCX</div>
       <div class="file-badge" id="fileBadge"></div>
-    </div>
-
-    <div class="done-card" id="doneCard">
-      <div class="done-icon">❦</div>
-      <div class="done-text">
-        <div class="done-title">Opus Complete</div>
-        <div class="done-sub" id="doneSub"></div>
-      </div>
-      <a class="btn-download" id="btnDownload" href="#">Receive the Volume</a>
     </div>
 
     <div class="error-card" id="errorCard"></div>
@@ -104,16 +87,63 @@
           <div class="pill" data-fmt="pdf">PDF</div>
         </div>
       </div>
-
     </div>
 
     <div class="submit-wrap">
       <button class="btn-translate" id="btnTranslate" disabled>Select a manuscript to begin</button>
     </div>
 
-    </div><!-- /paneManuscript -->
+    <div class="done-card" id="doneCard">
+      <div class="done-icon">❦</div>
+      <div class="done-title">Opus Complete</div>
+      <div class="done-sub" id="doneSub"></div>
+      <a class="btn-download" id="btnDownload" href="#">Receive the Volume</a>
+    </div>
 
-    <div class="subpane" id="paneApparatus">
+    </div><!-- /page-body -->
+  </section>
+
+  <!-- ══ SPINE ══ -->
+  <div class="spine" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+
+  <!-- ══ SPREAD 2 · RIGHT (static base) — LECTORIUM ══ -->
+  <section class="page page-right">
+    <div class="page-heading">
+      <span class="folio-num">IV</span>
+      <h2>Lectorium</h2>
+      <span class="page-deco">♪</span>
+    </div>
+
+    <div class="page-body">
+
+    <div class="player">
+      <audio id="ttsAudio"></audio>
+      <button class="play-btn" id="ttsPlayBtn" title="Play / pause">▶</button>
+      <input type="range" class="player-seek" id="ttsSeek" min="0" max="1000" value="0">
+      <span class="player-time" id="ttsTime">0:00&hairsp;/&hairsp;0:00</span>
+      <label class="autonext" title="Continue to next chapter">
+        <input type="checkbox" id="ttsAutoNext" checked>
+        <span>⟳ auto</span>
+      </label>
+    </div>
+
+    <div id="ttsLibrary" class="tts-library"><div class="tts-empty">Upload an EPUB to open its audiobook.</div></div>
+
+    </div><!-- /page-body -->
+  </section>
+
+  <!-- ══ THE TURNING LEAF — front: Apparatus (spread 1 right) · back: Audiobook (spread 2 left) ══ -->
+  <div class="leaf" id="leaf">
+
+    <section class="page leaf-face leaf-front">
+      <div class="page-heading">
+        <span class="folio-num">II</span>
+        <h2>Apparatus</h2>
+        <span class="heading-note" id="settingsSummary"></span>
+        <button class="flip-btn" id="flipToAudio" type="button" title="Turn the page">Audiobook&thinsp;⟶</button>
+      </div>
+
+      <div class="page-body">
         <div class="settings-panel" id="settingsPanel">
           <div class="setting-row">
             <div class="setting-label"><span>Base URL</span></div>
@@ -174,105 +204,103 @@
             </div>
           </div>
         </div>
-    </div><!-- /paneApparatus -->
+      </div><!-- /page-body -->
 
-    </div><!-- /page-body -->
-
-    <div class="page-console" id="progressCard">
-      <div class="prog-header">
-        <div class="phase-steps">
-          <div class="phase-step" id="step-prepare"><span class="step-dot"></span>Prepare</div>
-          <div class="step-line"></div>
-          <div class="phase-step" id="step-translate"><span class="step-dot"></span>Translate</div>
-          <div class="step-line"></div>
-          <div class="phase-step" id="step-generate"><span class="step-dot"></span>Bind</div>
+      <div class="page-console" id="progressCard">
+        <div class="prog-header">
+          <div class="phase-steps">
+            <div class="phase-step" id="step-prepare"><span class="step-dot"></span>Prepare</div>
+            <div class="step-line"></div>
+            <div class="phase-step" id="step-translate"><span class="step-dot"></span>Translate</div>
+            <div class="step-line"></div>
+            <div class="phase-step" id="step-generate"><span class="step-dot"></span>Bind</div>
+          </div>
+          <button class="btn-stop" id="btnStop">■ Halt</button>
         </div>
-        <button class="btn-stop" id="btnStop">■ Halt</button>
+        <div class="prog-bar-wrap" id="progBarWrap">
+          <div class="prog-bar-fill" id="progFill"></div>
+        </div>
+        <div class="prog-meta" id="progMeta">
+          <span class="prog-count" id="progCount"></span>
+          <span id="progPct"></span>
+        </div>
+        <div class="prog-log" id="progLog"></div>
       </div>
-      <div class="prog-bar-wrap" id="progBarWrap">
-        <div class="prog-bar-fill" id="progFill"></div>
+    </section>
+
+    <section class="page leaf-face leaf-back">
+      <div class="page-heading">
+        <button class="flip-btn" id="flipToTrans" type="button" title="Turn back">⟵&thinsp;Translation</button>
+        <span class="folio-num">III</span>
+        <h2>Audiobook</h2>
+        <span class="page-deco">♪</span>
       </div>
-      <div class="prog-meta" id="progMeta">
-        <span class="prog-count" id="progCount"></span>
-        <span id="progPct"></span>
+
+      <div class="page-body">
+
+      <p class="page-lede">An EPUB rendered to spoken chapters — Microsoft Edge neural voices, stitched per chapter. The finished readings await on the facing page.</p>
+
+      <div class="drop-zone drop-zone-sm" id="ttsDropZone">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <input type="file" id="ttsFile" accept=".epub">
+        <svg class="drop-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.2">
+          <path d="M8 19 h 7 l 9 -8 v 26 l -9 -8 h -7 z"/>
+          <path d="M30 18 c 3 3, 3 9, 0 12"/>
+          <path d="M35 14 c 5 5, 5 15, 0 20"/>
+          <path d="M40 10 c 7 7, 7 21, 0 28"/>
+        </svg>
+        <div class="drop-title">Place your EPUB here</div>
+        <div class="drop-sub">or click to browse &nbsp;·&nbsp; typically the translated volume</div>
+        <div class="file-badge" id="ttsFileBadge"></div>
       </div>
-      <div class="prog-log" id="progLog"></div>
-    </div>
-  </section>
 
-  <!-- ══ SPINE ══ -->
-  <div class="spine reveal d2" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-
-  <!-- ══ RIGHT FOLIO — AUDIOBOOK ══ -->
-  <section class="page page-right reveal d3">
-    <div class="page-heading">
-      <span class="folio-num">II</span>
-      <h2>Audiobook</h2>
-      <span class="page-deco">♪</span>
-    </div>
-
-    <div class="page-body">
-
-    <p class="page-lede">An EPUB rendered to spoken chapters — Microsoft Edge neural voices, stitched per chapter.</p>
-
-    <div class="config">
-      <div>
-        <label>EPUB</label>
-        <label class="glossary-upload-btn tts-file-btn" id="ttsFileLabel">
-          <input type="file" id="ttsFile" accept=".epub" style="display:none;">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          <span id="ttsFileName">Choose .epub</span>
-        </label>
-      </div>
-      <div>
-        <label>Voice</label>
-        <div class="voice-row">
-        <select id="ttsVoice">
-          <option value="zh-CN-XiaoxiaoNeural" selected>晓晓 Xiaoxiao · zh 女</option>
-          <option value="zh-CN-XiaoyiNeural">晓伊 Xiaoyi · zh 女</option>
-          <option value="zh-CN-YunxiNeural">云希 Yunxi · zh 男</option>
-          <option value="zh-CN-YunjianNeural">云健 Yunjian · zh 男</option>
-          <option value="zh-CN-YunyangNeural">云扬 Yunyang · zh 男</option>
-          <option value="zh-TW-HsiaoChenNeural">曉臻 HsiaoChen · zh-TW 女</option>
-          <option value="en-US-AriaNeural">Aria · en-US female</option>
-          <option value="en-US-GuyNeural">Guy · en-US male</option>
-        </select>
-        <button class="voice-preview" id="ttsVoicePreview" type="button" title="Hear this voice">▶</button>
+      <div class="config">
+        <div class="config-full">
+          <label>Voice</label>
+          <div class="voice-row">
+          <select id="ttsVoice">
+            <option value="zh-CN-XiaoxiaoNeural" selected>晓晓 Xiaoxiao · zh 女</option>
+            <option value="zh-CN-XiaoyiNeural">晓伊 Xiaoyi · zh 女</option>
+            <option value="zh-CN-YunxiNeural">云希 Yunxi · zh 男</option>
+            <option value="zh-CN-YunjianNeural">云健 Yunjian · zh 男</option>
+            <option value="zh-CN-YunyangNeural">云扬 Yunyang · zh 男</option>
+            <option value="zh-TW-HsiaoChenNeural">曉臻 HsiaoChen · zh-TW 女</option>
+            <option value="en-US-AriaNeural">Aria · en-US female</option>
+            <option value="en-US-GuyNeural">Guy · en-US male</option>
+          </select>
+          <button class="voice-preview" id="ttsVoicePreview" type="button" title="Hear this voice">▶</button>
+          </div>
+        </div>
+        <div class="config-full">
+          <button class="btn-translate" id="btnTTS" disabled>Select an EPUB to begin</button>
         </div>
       </div>
-      <div class="config-full">
-        <button class="btn-translate" id="btnTTS" disabled>Select an EPUB to begin</button>
+
+      </div><!-- /page-body -->
+
+      <div class="page-console" id="ttsProgressWrap">
+        <div class="prog-header">
+          <span class="prog-count" id="ttsCount"></span>
+          <button class="btn-stop" id="btnTTSStop">■ Halt</button>
+        </div>
+        <div class="prog-bar-wrap"><div class="prog-bar-fill" id="ttsFill"></div></div>
+        <div class="prog-log" id="ttsLog"></div>
       </div>
+    </section>
+
+  </div><!-- /leaf -->
+
+  <!-- ══ FRONT COVER ══ -->
+  <div class="book-cover" id="bookCover" role="button" tabindex="0" title="Open the codex">
+    <div class="cover-frame">
+      <div class="cover-sigil">✠</div>
+      <div class="cover-title">Codex</div>
+      <div class="cover-sub">Scriptorivm Electronicvm</div>
+      <div class="cover-rule"><span></span>❦<span></span></div>
+      <div class="cover-hint">· open the codex ·</div>
     </div>
+  </div>
 
-    <div class="listen-heading">
-      <span class="rule"></span><span>Lectorium</span><span class="rule"></span>
-    </div>
-
-    <div class="player">
-      <audio id="ttsAudio"></audio>
-      <button class="play-btn" id="ttsPlayBtn" title="Play / pause">▶</button>
-      <input type="range" class="player-seek" id="ttsSeek" min="0" max="1000" value="0">
-      <span class="player-time" id="ttsTime">0:00&hairsp;/&hairsp;0:00</span>
-      <label class="autonext" title="Continue to next chapter">
-        <input type="checkbox" id="ttsAutoNext" checked>
-        <span>⟳ auto</span>
-      </label>
-    </div>
-
-    <div id="ttsLibrary" class="tts-library"><div class="tts-empty">Upload an EPUB to open its audiobook.</div></div>
-
-    </div><!-- /page-body -->
-
-    <div class="page-console" id="ttsProgressWrap">
-      <div class="prog-header">
-        <span class="prog-count" id="ttsCount"></span>
-        <button class="btn-stop" id="btnTTSStop">■ Halt</button>
-      </div>
-      <div class="prog-bar-wrap"><div class="prog-bar-fill" id="ttsFill"></div></div>
-      <div class="prog-log" id="ttsLog"></div>
-    </div>
-  </section>
 </main>
 
 <footer class="reveal d4">CODEX &nbsp;·&nbsp; SCRIPTORIVM ELECTRONICVM &nbsp;·&nbsp; <span>✠</span></footer>

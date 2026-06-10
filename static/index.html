@@ -32,6 +32,14 @@
 
     <div class="page-body">
 
+    <div class="subtabs">
+      <button type="button" class="subtab active" data-pane="paneManuscript">Manuscript</button>
+      <button type="button" class="subtab" data-pane="paneApparatus">Apparatus</button>
+      <span class="subtab-summary" id="settingsSummary"></span>
+    </div>
+
+    <div class="subpane active" id="paneManuscript">
+
     <div class="drop-zone" id="dropZone">
       <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
       <input type="file" id="fileInput" accept=".pdf,.epub,.txt,.docx">
@@ -44,6 +52,17 @@
       <div class="drop-sub">or click to browse &nbsp;·&nbsp; PDF · EPUB · TXT · DOCX</div>
       <div class="file-badge" id="fileBadge"></div>
     </div>
+
+    <div class="done-card" id="doneCard">
+      <div class="done-icon">❦</div>
+      <div class="done-text">
+        <div class="done-title">Opus Complete</div>
+        <div class="done-sub" id="doneSub"></div>
+      </div>
+      <a class="btn-download" id="btnDownload" href="#">Receive the Volume</a>
+    </div>
+
+    <div class="error-card" id="errorCard"></div>
 
     <div class="config">
       <div>
@@ -86,13 +105,15 @@
         </div>
       </div>
 
-      <div class="config-full">
-        <div class="settings-toggle" id="settingsToggle">
-          <span class="toggle-glyph">⚙</span>
-          <span>Apparatus</span>
-          <span class="settings-summary" id="settingsSummary"></span>
-          <svg class="settings-chevron" id="settingsChevron" width="11" height="11" viewBox="0 0 12 12"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
-        </div>
+    </div>
+
+    <div class="submit-wrap">
+      <button class="btn-translate" id="btnTranslate" disabled>Select a manuscript to begin</button>
+    </div>
+
+    </div><!-- /paneManuscript -->
+
+    <div class="subpane" id="paneApparatus">
         <div class="settings-panel" id="settingsPanel">
           <div class="setting-row">
             <div class="setting-label"><span>Base URL</span></div>
@@ -153,21 +174,7 @@
             </div>
           </div>
         </div>
-      </div>
-    </div>
-
-    <div class="submit-wrap">
-      <button class="btn-translate" id="btnTranslate" disabled>Select a manuscript to begin</button>
-    </div>
-
-    <div class="done-card" id="doneCard">
-      <div class="done-icon">❦</div>
-      <div class="done-title">Opus Complete</div>
-      <div class="done-sub" id="doneSub"></div>
-      <a class="btn-download" id="btnDownload" href="#">Receive the Volume</a>
-    </div>
-
-    <div class="error-card" id="errorCard"></div>
+    </div><!-- /paneApparatus -->
 
     </div><!-- /page-body -->
 

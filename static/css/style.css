@@ -307,31 +307,39 @@ select option { background: #15100a; color: var(--vellum); }
   box-shadow: 0 0 14px rgba(216, 162, 74, 0.08);
 }
 
-/* ── Apparatus (settings) ─────────────────────────────────────────── */
-.settings-toggle {
-  display: flex; align-items: center; gap: 9px;
-  padding: 9px 13px;
-  background: var(--page-deep);
-  border: 1px solid var(--line-strong); border-radius: 2px;
-  cursor: pointer; user-select: none;
-  font-family: var(--carved); font-weight: 500;
-  font-size: 10.5px; letter-spacing: 0.2em; text-transform: uppercase;
-  color: var(--vellum-dim);
-  transition: border-color 0.2s, color 0.2s;
+/* ── Subtabs (Manuscript / Apparatus) ─────────────────────────────── */
+.subtabs {
+  display: flex; align-items: center; gap: 2px;
+  border-bottom: 1px solid var(--line-strong);
+  margin-bottom: 22px;
 }
-.settings-toggle:hover { border-color: var(--gold-deep); color: var(--vellum); }
-.toggle-glyph { color: var(--gold-deep); font-size: 13px; }
-.settings-summary { margin-left: auto; font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em; text-transform: none; color: var(--vellum-faint); }
-.settings-chevron { transition: transform 0.25s; flex-shrink: 0; }
-.settings-chevron.open { transform: rotate(180deg); }
+.subtab {
+  margin-bottom: -1px;
+  padding: 7px 15px 9px;
+  background: none; border: none;
+  border-bottom: 2px solid transparent;
+  font-family: var(--carved); font-weight: 600;
+  font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase;
+  color: var(--vellum-faint);
+  cursor: pointer; transition: color 0.15s, border-color 0.15s;
+}
+.subtab:hover { color: var(--vellum); }
+.subtab.active { color: var(--gold); border-bottom-color: var(--gold-deep); }
+.subtab-summary {
+  margin-left: auto; padding-right: 2px;
+  font-family: var(--mono); font-size: 10px;
+  color: var(--vellum-faint);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.subpane { display: none; }
+.subpane.active { display: block; }
+.page-left .page-body { overflow: hidden; }
 
+/* ── Apparatus (settings) ─────────────────────────────────────────── */
 .settings-panel {
-  display: none; flex-direction: column; gap: 14px;
-  margin-top: 10px; padding: 17px 15px;
-  background: var(--page-deep);
-  border: 1px solid var(--line-strong); border-radius: 2px;
+  display: flex; flex-direction: column; gap: 15px;
+  padding: 6px 2px 0;
 }
-.settings-panel.open { display: flex; }
 
 .setting-row { display: flex; align-items: center; gap: 12px; justify-content: space-between; }
 .setting-label {
@@ -514,21 +522,27 @@ select option { background: #15100a; color: var(--vellum); }
 
 /* ── Done & error ─────────────────────────────────────────────────── */
 .done-card {
-  display: none; margin-top: 26px; padding: 26px 20px;
+  display: none;
+  margin: -6px 0 22px; padding: 13px 16px;
   border: 1px solid var(--verdigris); border-radius: 2px;
-  background: linear-gradient(180deg, rgba(127, 169, 139, 0.06), transparent);
-  text-align: center;
+  background: linear-gradient(180deg, rgba(127, 169, 139, 0.08), rgba(127, 169, 139, 0.02));
+  align-items: center; gap: 14px;
 }
-.done-card.visible { display: block; animation: rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1); }
-.done-icon { font-size: 30px; color: var(--verdigris); margin-bottom: 8px; }
+.done-card.visible { display: flex; animation: rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1); }
+.done-icon { font-size: 22px; color: var(--verdigris); flex-shrink: 0; }
+.done-text { flex: 1; min-width: 0; }
 .done-title {
   font-family: var(--carved); font-weight: 600;
-  font-size: 17px; letter-spacing: 0.2em; text-transform: uppercase;
-  color: var(--vellum); margin-bottom: 6px;
+  font-size: 13px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--vellum); margin-bottom: 3px;
 }
-.done-sub { font-family: var(--mono); font-size: 11px; color: var(--vellum-dim); margin-bottom: 18px; }
+.done-sub {
+  font-family: var(--mono); font-size: 10.5px; color: var(--vellum-dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .btn-download {
-  display: inline-block; padding: 11px 34px;
+  flex-shrink: 0;
+  display: inline-block; padding: 10px 20px;
   background: linear-gradient(180deg, #8fbb9d, #5d8a6c);
   border: 1px solid #3c5c47; border-radius: 2px;
   font-family: var(--carved); font-weight: 600;
@@ -539,7 +553,7 @@ select option { background: #15100a; color: var(--vellum); }
 .btn-download:hover { filter: brightness(1.12); box-shadow: 0 0 22px rgba(127, 169, 139, 0.25); }
 
 .error-card {
-  display: none; margin-top: 22px; padding: 15px 18px;
+  display: none; margin: -6px 0 22px; padding: 15px 18px;
   border: 1px solid var(--oxblood); border-left-width: 3px; border-radius: 2px;
   background: rgba(176, 74, 50, 0.05);
   font-family: var(--mono); font-size: 12px; color: #d98a76; line-height: 1.6;

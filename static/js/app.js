@@ -69,13 +69,15 @@ function applyAutoSettings(s) {
   updateSettingsSummary();
 }
 
-// ── Settings Panel ──
-$('settingsToggle').addEventListener('click', () => {
-  const panel = $('settingsPanel');
-  const chevron = $('settingsChevron');
-  panel.classList.toggle('open');
-  chevron.classList.toggle('open');
-});
+// ── Subtabs (Manuscript / Apparatus) ──
+function switchPane(paneId) {
+  document.querySelectorAll('.subtab').forEach(t =>
+    t.classList.toggle('active', t.dataset.pane === paneId));
+  document.querySelectorAll('.subpane').forEach(p =>
+    p.classList.toggle('active', p.id === paneId));
+}
+document.querySelectorAll('.subtab').forEach(t =>
+  t.addEventListener('click', () => switchPane(t.dataset.pane)));
 
 const SETTINGS = [
   { key: 'Workers', rangeId: 'rangeWorkers', numId: 'numWorkers', hintId: 'hintWorkers' },
@@ -152,7 +154,6 @@ async function startTranslation() {
 
   btn.disabled = true;
   btn.textContent = 'Starting…';
-  $('progressCard').classList.add('visible');
   $('doneCard').classList.remove('visible');
   $('errorCard').classList.remove('visible');
   $('progLog').innerHTML = '';
@@ -220,6 +221,20 @@ function setPhase(phase) {
   _currentPhase = phase;
 }
 
+// All steps settle to green, bar full, no more pulsing/scanning.
+function setPhaseComplete() {
+  PHASES.forEach(s => {
+    const el = $('step-' + s);
+    el.classList.remove('active');
+    el.classList.add('done');
+  });
+  $('progBarWrap').classList.remove('scanning');
+  $('progMeta').classList.remove('hidden');
+  $('progFill').style.width = '100%';
+  $('progPct').textContent = '100%';
+  _currentPhase = null;
+}
+
 // ── Stop ──
 $('btnStop').addEventListener('click', async () => {
   if (!currentJobId) return;
@@ -260,15 +275,13 @@ function listenProgress(jobId) {
       addLog(`¶ ${ev.chapter}: ${ev.src} → ${ev.tgt}${ok ? '' : ' ⚠ mismatch'}`, ok ? '' : 'err');
     }
     else if (ev.type === 'done') {
-      $('progFill').style.width = '100%';
-      setPhase('generate');
+      setPhaseComplete();
       const mb = (ev.size / 1024 / 1024).toFixed(2);
       showDone(jobId, ev.filename, mb);
       es.close();
     }
     else if (ev.type === 'cancelled') {
       addLog('Stopped.', 'err');
-      $('progressCard').classList.remove('visible');
       resetBtn();
       es.close();
     }
@@ -297,18 +310,20 @@ function resetBtn() {
   btn.disabled = false;
   btn.textContent = 'Translate';
   $('btnStop').disabled = false;
-  $('btnStop').textContent = '■ Stop';
+  $('btnStop').textContent = '■ Halt';
 }
 
 function showDone(jobId, filename, mb) {
-  $('progressCard').classList.remove('visible');
+  switchPane('paneManuscript');
   $('doneCard').classList.add('visible');
   $('doneSub').textContent = `${filename}  ·  ${mb} MB`;
   $('btnDownload').href = `/api/download/${jobId}`;
+  addLog(`❦ Opus complete — ${filename} (${mb} MB)`, 'done');
   resetBtn();
 }
 
 function showError(msg) {
+  switchPane('paneManuscript');
   $('errorCard').textContent = '⚠ ' + msg;
   $('errorCard').classList.add('visible');
   resetBtn();

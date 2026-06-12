@@ -108,7 +108,7 @@ def fmt_metrics(label: str, m: dict, src_paras: int, src_words: int) -> list[str
     return lines
 
 
-def judge(src, ta, tb, label_a, label_b, n, base_url):
+def judge(src, ta, tb, label_a, label_b, n, base_url, seed=42):
     from openai import OpenAI
     client = OpenAI(api_key="dummy", base_url=base_url)
     common = [k for k in src if k in ta and k in tb
@@ -117,8 +117,9 @@ def judge(src, ta, tb, label_a, label_b, n, base_url):
     if not common:
         print("\nNo common chapters for judging.")
         return
-    rng = random.Random(42)
-    picks = [common[int(i * len(common) / n) % len(common)] for i in range(n)]
+    rng = random.Random(seed)
+    picks = sorted(rng.sample(common, n) if n <= len(common)
+                   else [common[int(i * len(common) / n) % len(common)] for i in range(n)])
     votes = {label_a: 0, label_b: 0, "tie": 0, "invalid": 0}
     print(f"\n══ Blind LLM judge ({n} passages, randomized labels) ══")
     for i, name in enumerate(picks):
@@ -167,6 +168,7 @@ def main():
     ap.add_argument("source"); ap.add_argument("trans_a"); ap.add_argument("trans_b")
     ap.add_argument("--label-a", default="A"); ap.add_argument("--label-b", default="B")
     ap.add_argument("--judge", type=int, default=0)
+    ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--base-url", default="http://127.0.0.1:8080/v1")
     args = ap.parse_args()
 
@@ -200,7 +202,8 @@ def main():
                 print(f"    · {s}")
 
     if args.judge:
-        judge(src, ta, tb, args.label_a, args.label_b, args.judge, args.base_url)
+        judge(src, ta, tb, args.label_a, args.label_b, args.judge, args.base_url,
+              seed=args.seed)
 
 
 if __name__ == "__main__":

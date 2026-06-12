@@ -109,12 +109,16 @@ python -m venv .venv
 .venv/bin/uvicorn codex.main:app --port 8000
 ```
 
-Open `http://localhost:8000`, drop an EPUB on the left page, tune the settings
-under **Apparatus** — endpoint, model, parallel scribes, block size, ¶
-tolerance, correction pass — optionally upload a base glossary
-(`{"Term": {"translation": "...", "type": "...", "source": "official"}}`),
-and start. The right page takes any EPUB (typically the translated output) and
-turns it into an audiobook.
+Open `http://localhost:8000`. The UI is a book of six pages, turned by the
+dog-eared corners (top-right turns forward, top-left turns back; the fold
+unfurls and names the destination page on hover): **I Translation** (drop an
+EPUB) · **II Apparatus** (endpoint, model, parallel scribes, block size, ¶
+tolerance, correction pass, optional base glossary
+`{"Term": {"translation": "...", "type": "...", "source": "official"}}`) ·
+**III Audiobook** (voice an EPUB, typically the translated output) ·
+**IV Lectorium** (the run in progress) · **V Archivum** (every voiced book on
+the shelf) · **VI Auditorium** (the chosen volume's chapters, with player and
+per-book resume).
 
 Parallel Scribes needs llama.cpp running with multiple slots (`-np 4`; note
 `-c` is the *total* context, shared across slots, and speculative decoding

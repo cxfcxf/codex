@@ -437,25 +437,64 @@ select {
 }
 select option { background: #15100a; color: var(--vellum); }
 
-/* ── Page furniture: flip buttons, heading notes, fillers ─────────── */
-.flip-btn {
-  align-self: center;
-  padding: 6px 13px;
-  background: linear-gradient(180deg, rgba(216, 162, 74, 0.14), rgba(216, 162, 74, 0.04));
-  border: 1px solid var(--gold-deep); border-radius: 2px;
+/* ── Page furniture: turn corners, heading notes, fillers ──────────
+   A dog-eared corner turns the page, the way a real reader would:
+   bottom-right folds forward, bottom-left folds back. The ::after is
+   the lifted flap (the page's backside catching light along the
+   fold), the ::before is the dark gap it leaves behind.            */
+/* the hit area stays a comfortable 64px; the fold itself rests as a
+   barely-curled 18px corner and unfurls across it on hover */
+.page-turn {
+  position: absolute;
+  width: 64px; height: 64px;
+  padding: 0; border: 0; background: none;
+  cursor: pointer;
+  z-index: 6;
+}
+.turn-fwd  { top: 0; right: 0; }
+.turn-back { top: 0; left: 0; }
+
+.page-turn::before, .page-turn::after {
+  content: ''; position: absolute;
+  width: 18px; height: 18px;
+  pointer-events: none;
+  transition: width 0.28s cubic-bezier(0.2, 0.7, 0.3, 1), height 0.28s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+.turn-fwd::before,  .turn-fwd::after  { top: 0; right: 0; }
+.turn-back::before, .turn-back::after { top: 0; left: 0; }
+.page-turn:hover::before, .page-turn:hover::after { width: 100%; height: 100%; }
+/* the void where the corner has lifted away */
+.turn-fwd::before  { background: linear-gradient(225deg, rgba(4, 3, 1, 0.65) 0 49.5%, transparent 50%); }
+.turn-back::before { background: linear-gradient(135deg, rgba(4, 3, 1, 0.65) 0 49.5%, transparent 50%); }
+/* the folded flap — vellum backside, lit along the crease */
+.turn-fwd::after {
+  background: linear-gradient(225deg, transparent 0 50%, #5b4826 50%, #3b2d16 70%, #241b0d 100%);
+  filter: drop-shadow(-4px 4px 5px rgba(0, 0, 0, 0.5));
+}
+.turn-back::after {
+  background: linear-gradient(135deg, transparent 0 50%, #5b4826 50%, #3b2d16 70%, #241b0d 100%);
+  filter: drop-shadow(4px 4px 5px rgba(0, 0, 0, 0.5));
+}
+.turn-fwd:hover::after {
+  background: linear-gradient(225deg, transparent 0 50%, #7a6133 50%, #4a3a1d 70%, #2c2110 100%);
+}
+.turn-back:hover::after {
+  background: linear-gradient(135deg, transparent 0 50%, #7a6133 50%, #4a3a1d 70%, #2c2110 100%);
+}
+
+.turn-label {
+  position: absolute;
   font-family: var(--carved); font-weight: 600;
-  font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
-  color: var(--gold);
-  cursor: pointer; white-space: nowrap;
-  transition: all 0.18s;
+  font-size: 9.5px; letter-spacing: 0.2em; text-transform: uppercase;
+  color: var(--vellum-faint);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s, color 0.2s;
 }
-.flip-btn:hover {
-  background: linear-gradient(180deg, #d9b26b, #a8813c);
-  color: #1c1204;
-  box-shadow: 0 0 18px var(--gold-glow);
-}
-.leaf-front .flip-btn { margin-left: 12px; }
-.leaf-back .flip-btn { margin-right: 10px; }
+.turn-fwd .turn-label  { top: 13px; right: calc(100% + 4px); }
+.turn-back .turn-label { top: 13px; left: calc(100% + 4px); }
+.page-turn:hover .turn-label { opacity: 1; color: var(--gold); }
 
 .heading-note {
   margin-left: auto;
@@ -928,7 +967,7 @@ footer span { color: var(--gold-deep); }
     margin-top: 26px;
   }
   .leaf-front::after, .leaf-back::after { display: none; }
-  .flip-btn { display: none; }
+  .page-turn { display: none; }
   .page-left, .page-right, .leaf-face {
     border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
   }

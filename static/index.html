@@ -131,7 +131,6 @@
         <span class="folio-num">II</span>
         <h2>Apparatus</h2>
         <span class="heading-note" id="settingsSummary"></span>
-        <button class="flip-btn" id="flipToAudio" type="button" title="Turn the page">Audiobook&thinsp;⟶</button>
       </div>
 
       <div class="page-body">
@@ -234,11 +233,14 @@
         </div>
         <div class="prog-log" id="progLog"></div>
       </div>
+
+      <button class="page-turn turn-fwd" id="flipToAudio" type="button" title="Turn to the Audiobook">
+        <span class="turn-label">Audiobook</span>
+      </button>
     </section>
 
     <section class="page leaf-face leaf-back">
       <div class="page-heading">
-        <button class="flip-btn" id="flipToTrans" type="button" title="Turn back">⟵&thinsp;Translation</button>
         <span class="folio-num">III</span>
         <h2>Audiobook</h2>
         <span class="page-deco">♪</span>
@@ -294,6 +296,10 @@
         <div class="prog-bar-wrap"><div class="prog-bar-fill" id="ttsFill"></div></div>
         <div class="prog-log" id="ttsLog"></div>
       </div>
+
+      <button class="page-turn turn-back" id="flipToTrans" type="button" title="Turn back to Translation">
+        <span class="turn-label">Translation</span>
+      </button>
     </section>
 
   </div><!-- /leaf -->
@@ -306,7 +312,6 @@
         <span class="folio-num">IV</span>
         <h2>Lectorium</h2>
         <span class="page-deco">♪</span>
-        <button class="flip-btn" id="flipToArchive" type="button" title="Turn the page">Archivum&thinsp;⟶</button>
       </div>
 
       <div class="page-body">
@@ -325,11 +330,14 @@
       <div id="ttsLibrary" class="tts-library"><div class="tts-empty">Upload an EPUB to open its audiobook.</div></div>
 
       </div><!-- /page-body -->
+
+      <button class="page-turn turn-fwd" id="flipToArchive" type="button" title="Turn to the Archivum">
+        <span class="turn-label">Archivum</span>
+      </button>
     </section>
 
     <section class="page leaf-face leaf-back">
       <div class="page-heading">
-        <button class="flip-btn" id="flipToLectorium" type="button" title="Turn back">⟵&thinsp;Lectorium</button>
         <span class="folio-num">V</span>
         <h2>Archivum</h2>
         <span class="page-deco">♬</span>
@@ -342,6 +350,10 @@
       <div id="archShelf" class="tts-library arch-shelf"><div class="tts-empty">No audiobooks bound yet — the shelf stands empty.</div></div>
 
       </div><!-- /page-body -->
+
+      <button class="page-turn turn-back" id="flipToLectorium" type="button" title="Turn back to the Lectorium">
+        <span class="turn-label">Lectorium</span>
+      </button>
     </section>
 
   </div><!-- /leaf2 -->

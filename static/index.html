@@ -97,28 +97,28 @@
   <!-- ══ SPINE ══ -->
   <div class="spine" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
 
-  <!-- ══ SPREAD 2 · RIGHT (static base) — LECTORIUM ══ -->
+  <!-- ══ SPREAD 3 · RIGHT (static base) — AUDITORIUM ══ -->
   <section class="page page-right">
     <div class="page-heading">
-      <span class="folio-num">IV</span>
-      <h2>Lectorium</h2>
+      <span class="folio-num">VI</span>
+      <h2>Auditorium</h2>
       <span class="page-deco">♪</span>
     </div>
 
     <div class="page-body">
 
     <div class="player">
-      <audio id="ttsAudio"></audio>
-      <button class="play-btn" id="ttsPlayBtn" title="Play / pause">▶</button>
-      <input type="range" class="player-seek" id="ttsSeek" min="0" max="1000" value="0">
-      <span class="player-time" id="ttsTime">0:00&hairsp;/&hairsp;0:00</span>
+      <audio id="archAudio"></audio>
+      <button class="play-btn" id="archPlayBtn" title="Play / pause">▶</button>
+      <input type="range" class="player-seek" id="archSeek" min="0" max="1000" value="0">
+      <span class="player-time" id="archTime">0:00&hairsp;/&hairsp;0:00</span>
       <label class="autonext" title="Continue to next chapter">
-        <input type="checkbox" id="ttsAutoNext" checked>
+        <input type="checkbox" id="archAutoNext" checked>
         <span>⟳ auto</span>
       </label>
     </div>
 
-    <div id="ttsLibrary" class="tts-library"><div class="tts-empty">Upload an EPUB to open its audiobook.</div></div>
+    <div id="archChapters" class="tts-library"><div class="tts-empty">Choose a volume from the Archivum.</div></div>
 
     </div><!-- /page-body -->
   </section>
@@ -297,6 +297,54 @@
     </section>
 
   </div><!-- /leaf -->
+
+  <!-- ══ THE SECOND LEAF — front: Lectorium (spread 2 right) · back: Archivum (spread 3 left) ══ -->
+  <div class="leaf" id="leaf2">
+
+    <section class="page leaf-face leaf-front">
+      <div class="page-heading">
+        <span class="folio-num">IV</span>
+        <h2>Lectorium</h2>
+        <span class="page-deco">♪</span>
+        <button class="flip-btn" id="flipToArchive" type="button" title="Turn the page">Archivum&thinsp;⟶</button>
+      </div>
+
+      <div class="page-body">
+
+      <div class="player">
+        <audio id="ttsAudio"></audio>
+        <button class="play-btn" id="ttsPlayBtn" title="Play / pause">▶</button>
+        <input type="range" class="player-seek" id="ttsSeek" min="0" max="1000" value="0">
+        <span class="player-time" id="ttsTime">0:00&hairsp;/&hairsp;0:00</span>
+        <label class="autonext" title="Continue to next chapter">
+          <input type="checkbox" id="ttsAutoNext" checked>
+          <span>⟳ auto</span>
+        </label>
+      </div>
+
+      <div id="ttsLibrary" class="tts-library"><div class="tts-empty">Upload an EPUB to open its audiobook.</div></div>
+
+      </div><!-- /page-body -->
+    </section>
+
+    <section class="page leaf-face leaf-back">
+      <div class="page-heading">
+        <button class="flip-btn" id="flipToLectorium" type="button" title="Turn back">⟵&thinsp;Lectorium</button>
+        <span class="folio-num">V</span>
+        <h2>Archivum</h2>
+        <span class="page-deco">♬</span>
+      </div>
+
+      <div class="page-body">
+
+      <p class="page-lede">The finished audiobooks of the scriptorium. Choose a volume to open its readings on the facing page.</p>
+
+      <div id="archShelf" class="tts-library arch-shelf"><div class="tts-empty">No audiobooks bound yet — the shelf stands empty.</div></div>
+
+      </div><!-- /page-body -->
+    </section>
+
+  </div><!-- /leaf2 -->
 
   <!-- ══ FRONT COVER ══ -->
   <div class="book-cover" id="bookCover" role="button" tabindex="0" title="Open the codex">

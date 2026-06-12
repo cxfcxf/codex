@@ -5,6 +5,7 @@ import threading
 from pathlib import Path
 
 DEFAULT_VOICE = "zh-CN-XiaoxiaoNeural"
+MAX_SYNTH_TRIES = 5  # transient 503s from the edge-tts endpoint are common
 
 # ── Text cleanup for TTS ──────────────────────────────────────────────────────
 
@@ -147,13 +148,30 @@ def tts_worker(
                 out = out_path(idx, item["title"])
                 if out.exists():
                     continue
+                emit(type="status", message=f"⟶ voicing {out.stem}…")
                 part = out.with_suffix(".part")
-                try:
-                    await synth(item["text"], part)
-                    part.rename(out)
-                except Exception as exc:
-                    part.unlink(missing_ok=True)
-                    emit(type="status", message=f"chapter failed ({item['title']}): {exc}")
+                ok = False
+                for attempt in range(MAX_SYNTH_TRIES):
+                    if cancel.is_set():
+                        return
+                    try:
+                        await synth(item["text"], part)
+                        part.rename(out)
+                        ok = True
+                        break
+                    except Exception as exc:
+                        part.unlink(missing_ok=True)
+                        if attempt + 1 < MAX_SYNTH_TRIES:
+                            delay = min(60, 5 * 2 ** attempt)
+                            emit(type="status",
+                                 message=f"↻ {out.stem}: {exc} — retry "
+                                         f"{attempt + 1}/{MAX_SYNTH_TRIES - 1} in {delay}s")
+                            await asyncio.sleep(delay)
+                        else:
+                            emit(type="status",
+                                 message=f"⚠ chapter failed ({out.stem}) "
+                                         f"after {MAX_SYNTH_TRIES} tries: {exc}")
+                if not ok:
                     continue
                 done += 1
                 emit(type="progress", done=done, total=total)

@@ -195,20 +195,32 @@ body {
   opacity: 0.8;
 }
 
-/* ── The turning leaf ─────────────────────────────────────────────────
-   Occupies the right half; rotates around the spine centre like a real
-   sheet. Front face = Apparatus (spread 1 right); back face = Audiobook
-   (spread 2 left). Flipping reveals the Lectorium base underneath.   */
+/* ── The turning leaves ───────────────────────────────────────────────
+   Each occupies the right half; rotates around the spine centre like a
+   real sheet. Leaf 1: Apparatus (II) / Audiobook (III). Leaf 2 beneath:
+   Lectorium (IV) / Archivum (V). Flipping both reveals the Auditorium
+   base (VI) underneath. Leaf 1 stays above leaf 2 so it always turns
+   over the top of the stack; leaf 2 jumps above when it turns, and
+   holds that rank until its return turn finishes.                    */
 .leaf {
   position: absolute; top: 0; bottom: 0;
   left: calc(50% + 22px);
   width: calc(50% - 22px);
-  z-index: 10;
   transform-style: preserve-3d;
   transform-origin: -22px 50%;
   transition: transform 1.15s cubic-bezier(0.45, 0.05, 0.18, 1);
 }
-.codex.flipped .leaf { transform: rotateY(-180deg); }
+#leaf { z-index: 12; }
+#leaf2 {
+  z-index: 11;
+  transition: transform 1.15s cubic-bezier(0.45, 0.05, 0.18, 1), z-index 0s 1.2s;
+}
+.codex.flipped #leaf { transform: rotateY(-180deg); }
+.codex.flipped2 #leaf2 {
+  transform: rotateY(-180deg);
+  z-index: 13;
+  transition: transform 1.15s cubic-bezier(0.45, 0.05, 0.18, 1), z-index 0s 0s;
+}
 
 .leaf-face {
   position: absolute; inset: 0; height: auto;
@@ -228,8 +240,10 @@ body {
 
 /* only the face currently shown takes clicks */
 .leaf-back { pointer-events: none; }
-.codex.flipped .leaf-front { pointer-events: none; }
-.codex.flipped .leaf-back  { pointer-events: auto; }
+.codex.flipped #leaf .leaf-front { pointer-events: none; }
+.codex.flipped #leaf .leaf-back  { pointer-events: auto; }
+.codex.flipped2 #leaf2 .leaf-front { pointer-events: none; }
+.codex.flipped2 #leaf2 .leaf-back  { pointer-events: auto; }
 
 /* ── The front cover ──────────────────────────────────────────────── */
 .book-cover {
@@ -674,14 +688,15 @@ select option { background: #15100a; color: var(--vellum); }
 .log-line.done { color: var(--verdigris); }
 .log-line.err { color: var(--oxblood); }
 
-/* on the leaf pages the console fills everything below the controls */
-.leaf-face .page-body { flex: 0 0 auto; }
-.leaf-face .page-console {
+/* on the first leaf's pages the console fills everything below the controls
+   (leaf 2 has no console — its page-body keeps the normal fill behavior) */
+#leaf .page-body { flex: 0 0 auto; }
+#leaf .page-console {
   flex: 1; min-height: 0;
   display: flex; flex-direction: column;
 }
-.leaf-face .page-console > * { flex-shrink: 0; }
-.leaf-face .prog-log { flex: 1; height: auto; min-height: 130px; }
+#leaf .page-console > * { flex-shrink: 0; }
+#leaf .prog-log { flex: 1; height: auto; min-height: 130px; }
 
 /* ── Done & error ─────────────────────────────────────────────────── */
 .done-card {
@@ -849,6 +864,36 @@ select option { background: #15100a; color: var(--vellum); }
 }
 
 .tts-empty { font-style: italic; font-size: 13.5px; color: var(--vellum-faint); padding: 8px 2px; }
+
+/* ── Archivum shelf (page V) — finished audiobooks ─────────────────── */
+.arch-shelf { gap: 7px; }
+
+.arch-book {
+  padding: 11px 14px;
+  border: 1px solid var(--line); border-radius: 2px;
+  background: linear-gradient(180deg, rgba(220, 170, 90, 0.025), transparent 70%);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.arch-book:hover {
+  border-color: var(--line-strong);
+  background: rgba(216, 162, 74, 0.05);
+}
+.arch-book.active {
+  border-color: var(--gold-deep);
+  background: rgba(216, 162, 74, 0.08);
+}
+.arch-book-title {
+  font-family: var(--serif); font-size: 15px;
+  color: var(--vellum);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.arch-book.active .arch-book-title { color: var(--gold-bright); }
+.arch-book-meta {
+  font-family: var(--mono); font-size: 10.5px;
+  color: var(--vellum-faint);
+  margin-top: 4px;
+}
 
 /* ── Footer colophon ──────────────────────────────────────────────── */
 footer {

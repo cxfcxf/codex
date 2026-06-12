@@ -83,11 +83,18 @@ Other behaviors worth knowing:
   table of contents (no language-specific heuristics); documents without a TOC
   entry keep their filename stem as a label but don't have it read aloud.
 - Each chapter is sent to `edge-tts` as a single request (it chunks internally)
-  and comes back as one MP3 in `workspace/<book>/tts/chapters/`.
+  and comes back as one MP3 in `workspace/<book>/tts/chapters/`. The console
+  shows each chapter as it's dispatched (`⟶ voicing …`), and transient endpoint
+  failures (the occasional 503) are retried up to 5 times with exponential
+  backoff (5s → 60s) before a chapter is given up on.
 - Generation resumes per chapter; changing the voice or the EPUB starts fresh.
 - The web player lists chapters as they finish, supports auto-advance, voice
   previews, and remembers the last played chapter & position per book
   (localStorage, keyed by the EPUB filename).
+- Past the Lectorium, the **Archivum** (page V) shelves every book in the
+  workspace with at least one voiced chapter — finished or mid-run — and the
+  **Auditorium** (page VI) opens the chosen volume's chapters in its own
+  player, resuming from your bookmark. One lectern speaks at a time.
 
 ## Running
 

@@ -63,6 +63,7 @@ function saveView() {
     sessionStorage.setItem(VIEW_KEY, JSON.stringify({
       open: codexEl.classList.contains('open'),
       flipped: codexEl.classList.contains('flipped'),
+      flipped2: codexEl.classList.contains('flipped2'),
     }));
   } catch {}
 }
@@ -75,13 +76,16 @@ $('bookCover').addEventListener('keydown', e => {
 });
 $('flipToAudio').addEventListener('click', () => { codexEl.classList.add('flipped'); saveView(); });
 $('flipToTrans').addEventListener('click', () => { codexEl.classList.remove('flipped'); saveView(); });
+$('flipToArchive').addEventListener('click', () => { codexEl.classList.add('flipped2'); saveView(); loadArchive(); });
+$('flipToLectorium').addEventListener('click', () => { codexEl.classList.remove('flipped2'); saveView(); });
 
 // restore the saved view (per tab) without replaying the animations
 try {
   const v = JSON.parse(sessionStorage.getItem(VIEW_KEY) || '{}');
   if (v.open) {
     codexEl.classList.add('instant', 'open');
-    if (v.flipped) codexEl.classList.add('flipped');
+    if (v.flipped || v.flipped2) codexEl.classList.add('flipped');
+    if (v.flipped2) codexEl.classList.add('flipped2');
     requestAnimationFrame(() => requestAnimationFrame(() => codexEl.classList.remove('instant')));
   }
 } catch {}
@@ -310,7 +314,7 @@ function resetBtn() {
 }
 
 function showDone(jobId, filename, mb) {
-  codexEl.classList.remove('flipped');
+  codexEl.classList.remove('flipped', 'flipped2');
   saveView();
   resetBtn();
   $('doneCard').classList.add('visible');
@@ -336,12 +340,17 @@ function ttsState() {
   catch { return {}; }
 }
 
-function saveTTSPosition() {
-  if (!ttsBook || ttsIndex < 0 || !ttsFiles[ttsIndex]) return;
+function savePos(book, file, time) {
+  if (!book || !file) return;
   const s = ttsState();
   s.books = s.books || {};
-  s.books[ttsBook] = { file: ttsFiles[ttsIndex], time: $('ttsAudio').currentTime || 0 };
+  s.books[book] = { file, time: time || 0 };
   localStorage.setItem(TTS_STATE_KEY, JSON.stringify(s));
+}
+
+function saveTTSPosition() {
+  if (ttsIndex < 0) return;
+  savePos(ttsBook, ttsFiles[ttsIndex], $('ttsAudio').currentTime);
 }
 
 async function selectTTSBook(book) {
@@ -439,6 +448,7 @@ function listenTTS(jobId) {
     else if (ev.type === 'tts_chapter') {
       ttsLog(`✓ ${ev.name}`, 'done');
       loadTTSLibrary();
+      loadArchive();
     }
     else if (ev.type === 'done') {
       const warn = ev.missing ? ` · ${ev.missing} chapters failed — run again to retry` : '';
@@ -447,6 +457,7 @@ function listenTTS(jobId) {
       $('ttsCount').textContent = `${ev.chapters} / ${ev.chapters} chapters · done`;
       ttsLog(`Audiobook complete — ${ev.chapters} chapters${warn}`, ev.missing ? 'err' : 'done');
       loadTTSLibrary();
+      loadArchive();
       resetTTSBtn();
       es.close();
     }
@@ -587,6 +598,158 @@ function updatePlayerUI() {
 ['pause', 'seeked', 'ended'].forEach(evt =>
   ttsAudioEl.addEventListener(evt, saveTTSPosition)
 );
-window.addEventListener('beforeunload', saveTTSPosition);
+
+// ── Archivum (page V) — shelf of finished audiobooks · Auditorium (page VI) reader ──
+let archBook = null, archPlaylist = [], archFiles = [], archIndex = -1;
+const archAudioEl = $('archAudio');
+
+function prettyBook(name) { return name.replace(/_/g, ' '); }
+
+async function loadArchive() {
+  try {
+    const res = await fetch('/api/tts/library');
+    const books = await res.json();
+    const shelf = $('archShelf');
+    shelf.innerHTML = '';
+    if (!books.length) {
+      shelf.innerHTML = '<div class="tts-empty">No audiobooks bound yet — the shelf stands empty.</div>';
+      return;
+    }
+    const bookmarks = ttsState().books || {};
+    books.forEach(b => {
+      const card = document.createElement('div');
+      card.className = 'arch-book' + (b.book === archBook ? ' active' : '');
+      const title = document.createElement('div');
+      title.className = 'arch-book-title';
+      title.textContent = prettyBook(b.book);
+      title.title = b.book;
+      const meta = document.createElement('div');
+      meta.className = 'arch-book-meta';
+      meta.textContent = `${b.chapters.length} chapters` + (bookmarks[b.book] ? ' · ⟲ bookmarked' : '');
+      card.append(title, meta);
+      card.addEventListener('click', () => selectArchBook(b));
+      shelf.appendChild(card);
+    });
+    // a book still being voiced grows — keep the open chapter list current
+    if (archBook) {
+      const open = books.find(b => b.book === archBook);
+      if (open) renderArchChapters(open, true);
+    }
+  } catch {}
+}
+
+function selectArchBook(b) {
+  if (b.book === archBook) return;
+  archAudioEl.pause();
+  archAudioEl.removeAttribute('src');
+  archBook = b.book;
+  archIndex = -1;
+  document.querySelectorAll('.arch-book').forEach(el =>
+    el.classList.toggle('active', el.querySelector('.arch-book-title').title === b.book));
+  renderArchChapters(b, false);
+  // restore last played chapter & position for this book
+  const saved = (ttsState().books || {})[b.book];
+  if (!saved) return;
+  const i = archFiles.indexOf(saved.file);
+  if (i < 0) return;
+  archIndex = i;
+  markActiveArch(i);
+  archAudioEl.src = archPlaylist[i];
+  archAudioEl.addEventListener('loadedmetadata', function once() {
+    archAudioEl.removeEventListener('loadedmetadata', once);
+    archAudioEl.currentTime = saved.time || 0;
+  });
+}
+
+function renderArchChapters(b, preserve) {
+  const playingFile = preserve && archIndex >= 0 ? archFiles[archIndex] : null;
+  archPlaylist = [];
+  archFiles = [];
+  const list = $('archChapters');
+  list.innerHTML = '';
+  const head = document.createElement('div');
+  head.className = 'tts-book';
+  head.textContent = prettyBook(b.book);
+  list.appendChild(head);
+  b.chapters.forEach((c, i) => {
+    archPlaylist.push(`/api/tts/audio/${encodeURIComponent(b.book)}/${encodeURIComponent(c.file)}`);
+    archFiles.push(c.file);
+    const el = document.createElement('div');
+    el.className = 'tts-chapter';
+    el.id = 'archCh-' + i;
+    el.textContent = c.name;
+    el.addEventListener('click', () => playArch(i));
+    list.appendChild(el);
+  });
+  archIndex = playingFile ? archFiles.indexOf(playingFile) : -1;
+  if (archIndex >= 0) markActiveArch(archIndex);
+}
+
+function markActiveArch(i) {
+  document.querySelectorAll('#archChapters .tts-chapter').forEach(e => e.classList.remove('active'));
+  const el = $('archCh-' + i);
+  if (el) { el.classList.add('active'); el.scrollIntoView({ block: 'nearest' }); }
+}
+
+function playArch(i) {
+  if (i < 0 || i >= archPlaylist.length) return;
+  archIndex = i;
+  markActiveArch(i);
+  archAudioEl.src = archPlaylist[i];
+  archAudioEl.play().catch(() => {});
+  saveArchPosition();
+}
+
+function saveArchPosition() {
+  if (archIndex < 0) return;
+  savePos(archBook, archFiles[archIndex], archAudioEl.currentTime);
+}
+
+$('archPlayBtn').addEventListener('click', () => {
+  if (!archAudioEl.src) {
+    if (archPlaylist.length) playArch(Math.max(0, archIndex));
+    return;
+  }
+  if (archAudioEl.paused) archAudioEl.play().catch(() => {});
+  else archAudioEl.pause();
+});
+
+$('archSeek').addEventListener('input', () => {
+  if (archAudioEl.duration) {
+    archAudioEl.currentTime = ($('archSeek').value / 1000) * archAudioEl.duration;
+  }
+});
+
+let _lastArchPosSave = 0;
+
+function updateArchPlayerUI() {
+  $('archPlayBtn').textContent = archAudioEl.paused ? '▶' : '❚❚';
+  if (archAudioEl.duration && !archAudioEl.seeking) {
+    $('archSeek').value = (archAudioEl.currentTime / archAudioEl.duration) * 1000;
+  }
+  $('archTime').textContent = fmtTime(archAudioEl.currentTime) + ' / ' + fmtTime(archAudioEl.duration);
+  if (!archAudioEl.paused && Date.now() - _lastArchPosSave > 5000) {
+    _lastArchPosSave = Date.now();
+    saveArchPosition();
+  }
+}
+['play', 'pause', 'ended', 'timeupdate', 'loadedmetadata'].forEach(evt =>
+  archAudioEl.addEventListener(evt, updateArchPlayerUI)
+);
+['pause', 'seeked', 'ended'].forEach(evt =>
+  archAudioEl.addEventListener(evt, saveArchPosition)
+);
+archAudioEl.addEventListener('ended', () => {
+  if ($('archAutoNext').checked && archIndex >= 0 && archIndex < archPlaylist.length - 1) {
+    playArch(archIndex + 1);
+  }
+});
+
+// one lectern speaks at a time
+archAudioEl.addEventListener('play', () => ttsAudioEl.pause());
+ttsAudioEl.addEventListener('play', () => archAudioEl.pause());
+
+window.addEventListener('beforeunload', () => { saveTTSPosition(); saveArchPosition(); });
 
 loadTTSLibrary();
+loadArchive();

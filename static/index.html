@@ -152,11 +152,11 @@
             <div class="setting-cell">
               <div class="setting-label">
                 <span>Parallel Scribes</span>
-                <span class="setting-hint" id="hintWorkers"></span>
+                <span class="setting-hint">Chapters at once — needs llama.cpp -np</span>
               </div>
               <div class="setting-control">
-                <input type="range" class="setting-range" id="rangeWorkers" min="1" max="100" value="1">
-                <input type="number" class="setting-num" id="numWorkers" min="1" max="100" value="1">
+                <input type="range" class="setting-range" id="rangeWorkers" min="1" max="8" step="1" value="1">
+                <input type="number" class="setting-num" id="numWorkers" min="1" max="8" step="1" value="1">
               </div>
             </div>
             <div class="setting-cell">
@@ -165,10 +165,21 @@
                 <span class="setting-hint">Count drift allowed — floor ±1</span>
               </div>
               <div class="setting-control">
-                <input type="range" class="setting-range" id="rangeTol" min="0" max="10" step="1" value="2">
-                <input type="number" class="setting-num" id="numTol" min="0" max="10" step="1" value="2">
+                <input type="range" class="setting-range" id="rangeTol" min="0" max="10" step="1" value="1">
+                <input type="number" class="setting-num" id="numTol" min="0" max="10" step="1" value="1">
                 <span class="setting-unit">%</span>
               </div>
+            </div>
+          </div>
+          <div class="setting-row">
+            <div class="setting-label">
+              <span>Block Size</span>
+              <span class="setting-hint">¶ per pass — larger chapters are pre-split</span>
+            </div>
+            <div class="setting-control">
+              <input type="range" class="setting-range" id="rangeBlock" min="50" max="1000" step="25" value="250">
+              <input type="number" class="setting-num" id="numBlock" min="50" max="1000" step="25" value="250">
+              <span class="setting-unit">¶</span>
             </div>
           </div>
           <div class="setting-row">
@@ -205,6 +216,8 @@
         <div class="prog-header">
           <div class="phase-steps">
             <div class="phase-step" id="step-prepare"><span class="step-dot"></span>Prepare</div>
+            <div class="step-line"></div>
+            <div class="phase-step" id="step-scout"><span class="step-dot"></span>Scout</div>
             <div class="step-line"></div>
             <div class="phase-step" id="step-translate"><span class="step-dot"></span>Translate</div>
             <div class="step-line"></div>

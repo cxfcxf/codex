@@ -49,11 +49,9 @@ async function analyzeFile(file) {
 }
 
 function applyAutoSettings(s) {
-  setSetting('Workers', s.workers, null);
-
   const wk = s.total_words >= 1000 ? Math.round(s.total_words / 1000) + 'k' : s.total_words;
   const label = s.is_structured ? 'chapters' : 'words';
-  $('settingsSummary').textContent = `${wk} ${label} · auto`;
+  $('settingsSummary').textContent = `${wk} ${label}`;
 }
 
 // ── The book: open the cover, flip the leaf ──
@@ -89,8 +87,9 @@ try {
 } catch {}
 
 const SETTINGS = [
-  { key: 'Workers', rangeId: 'rangeWorkers', numId: 'numWorkers', hintId: 'hintWorkers' },
-  { key: 'Tol',     rangeId: 'rangeTol',     numId: 'numTol',     hintId: null },
+  { key: 'Workers', rangeId: 'rangeWorkers', numId: 'numWorkers' },
+  { key: 'Tol',     rangeId: 'rangeTol',     numId: 'numTol' },
+  { key: 'Block',   rangeId: 'rangeBlock',   numId: 'numBlock' },
 ];
 
 SETTINGS.forEach(({ rangeId, numId }) => {
@@ -99,21 +98,16 @@ SETTINGS.forEach(({ rangeId, numId }) => {
   num.addEventListener('input',   () => { range.value = num.value; updateSettingsSummary(); });
 });
 
-function setSetting(key, value, hintText) {
-  const s = SETTINGS.find(x => x.key === key);
-  if (!s) return;
-  $(s.rangeId).value = value;
-  $(s.numId).value   = value;
-  if (s.hintId) $(s.hintId).textContent = hintText ? `Auto: ${hintText}` : `Auto: ${value}`;
-}
-
 function updateSettingsSummary() {
-  $('settingsSummary').textContent = `${$('numWorkers').value} workers`;
+  const w = $('numWorkers').value;
+  const scribes = w > 1 ? `${w} scribes · ` : '';
+  $('settingsSummary').textContent = `${scribes}${$('numBlock').value}¶ blocks · tol ±${$('numTol').value}%`;
 }
 
 function getSettings() {
   return {
     workers:           parseInt($('numWorkers').value),
+    block_paras:       parseInt($('numBlock').value),
     tolerance_percent: parseInt($('numTol').value),
   };
 }
@@ -172,6 +166,7 @@ async function startTranslation() {
   form.append('src_lang',      $('srcLang').value);
   form.append('tgt_lang',      $('tgtLang').value);
   form.append('workers',           settings.workers);
+  form.append('block_paras',       settings.block_paras);
   form.append('tolerance_percent', settings.tolerance_percent);
   form.append('fix_pass',          $('fixPassToggle').checked);
   if (selectedBaseGlossary) form.append('base_glossary_file', selectedBaseGlossary);
@@ -191,7 +186,7 @@ async function startTranslation() {
 }
 
 // ── Phase step indicator ──
-const PHASES = ['prepare', 'translate', 'generate'];
+const PHASES = ['prepare', 'scout', 'translate', 'generate'];
 let _currentPhase = null;
 
 function setPhase(phase) {
@@ -205,7 +200,7 @@ function setPhase(phase) {
 
   const wrap = $('progBarWrap');
   const meta = $('progMeta');
-  const isCountable = phase === 'translate';
+  const isCountable = phase === 'translate' || phase === 'scout';
   if (isCountable) {
     wrap.classList.remove('scanning');
     meta.classList.remove('hidden');
@@ -257,16 +252,16 @@ function listenProgress(jobId) {
       addLog(ev.message);
     }
     else if (ev.type === 'total') {
-      $('progCount').textContent = `0 / ${ev.total} segments`;
+      $('progCount').textContent = `0 / ${ev.total} chapters`;
     }
     else if (ev.type === 'progress') {
+      setPhase(ev.phase);
       const pct = Math.round((ev.done / ev.total) * 100);
       $('progFill').style.width = pct + '%';
-      $('progCount').textContent = `${ev.done} / ${ev.total} segments`;
+      $('progCount').textContent = `${ev.done} / ${ev.total} chapters`;
       $('progPct').textContent = pct + '%';
-      const label = ev.phase === 'extract' ? 'extracted' : 'translated';
-      const loc = ev.chapter ? `chapter: ${ev.chapter}` : `pages ${ev.pages}`;
-      addLog(`✓ ${label} ${loc}`, 'done');
+      const label = ev.phase === 'scout' ? 'scouted' : 'translated';
+      addLog(`✓ ${label} chapter: ${ev.chapter}`, 'done');
     }
     else if (ev.type === 'correction') {
       addLog(`✎ corrected chapter: ${ev.chapter}`, 'done');

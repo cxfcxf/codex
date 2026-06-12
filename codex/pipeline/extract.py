@@ -94,5 +94,4 @@ def suggest_settings(pages: list[dict]) -> dict:
         "is_structured": is_structured,
         "total_words": total_words,
         "total_pages": len(pages),
-        "workers": 1,
     }

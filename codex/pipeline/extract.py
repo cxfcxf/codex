@@ -1,17 +1,4 @@
 from pathlib import Path
-from codex.config import OVERLAP_WORDS
-
-
-def extract_pdf(path: Path) -> list[dict]:
-    import fitz
-    doc = fitz.open(str(path))
-    pages = []
-    for i in range(len(doc)):
-        text = doc[i].get_text("text")
-        if text.strip():
-            pages.append({"page": i + 1, "text": text})
-    doc.close()
-    return pages
 
 
 def extract_epub(path: Path) -> list[dict]:
@@ -48,17 +35,6 @@ def extract_epub(path: Path) -> list[dict]:
         if text.strip():
             parts.append(text)
     return _text_to_pages("\n\n".join(parts))
-
-
-def extract_txt(path: Path) -> list[dict]:
-    return _text_to_pages(path.read_text(encoding="utf-8", errors="ignore"))
-
-
-def extract_docx(path: Path) -> list[dict]:
-    from docx import Document
-    doc = Document(str(path))
-    text = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
-    return _text_to_pages(text)
 
 
 def _text_to_pages(text: str, words_per_page: int = 300) -> list[dict]:
@@ -105,74 +81,18 @@ def analyze_epub_structure(path: Path, min_para_chars: int = 10) -> list[dict]:
 
 
 def extract_text(path: Path) -> list[dict]:
-    suffix = path.suffix.lower()
-    extractors = {
-        ".pdf": extract_pdf, ".epub": extract_epub,
-        ".txt": extract_txt, ".docx": extract_docx,
-    }
-    if suffix not in extractors:
-        raise ValueError(f"Unsupported format: {suffix}")
-    return extractors[suffix](path)
-
-
-def _tail_words(text: str, n: int) -> str:
-    words = text.split()
-    return " ".join(words[-n:]) if len(words) > n else text
+    if path.suffix.lower() != ".epub":
+        raise ValueError(f"Unsupported format: {path.suffix}")
+    return extract_epub(path)
 
 
 def suggest_settings(pages: list[dict]) -> dict:
     is_structured = bool(pages and pages[0].get("chapter"))
     total_words = sum(len(p["text"].split()) for p in pages)
-    n_pages = len(pages)
-    avg_wpp = total_words / n_pages if n_pages else 300
-
-    workers = 1
-
-    # Dense text (short lines, poetry, drama) needs smaller chunks
-    if total_words < 8_000:
-        chunk_size = 600
-    elif avg_wpp < 120:
-        chunk_size = 1000
-    else:
-        chunk_size = 1500
 
     return {
         "is_structured": is_structured,
         "total_words": total_words,
-        "total_pages": n_pages,
-        "workers": workers,
-        "chunk_size": chunk_size,
-        "extract_chunk_size": chunk_size * 2,
-        "overlap_words": max(50, chunk_size // 10),
+        "total_pages": len(pages),
+        "workers": 1,
     }
-
-
-def chunk_pages(pages: list[dict], chunk_size: int, with_overlap: bool = False) -> list[dict]:
-    chunks, current_texts, current_words = [], [], 0
-    start_page = pages[0]["page"]
-    for p in pages:
-        wc = len(p["text"].split())
-        if current_words + wc > chunk_size and current_texts:
-            chunks.append({
-                "id": len(chunks),
-                "text": "\n".join(current_texts),
-                "start_page": start_page,
-                "end_page": p["page"] - 1,
-                "word_count": current_words,
-            })
-            current_texts, current_words, start_page = [p["text"]], wc, p["page"]
-        else:
-            current_texts.append(p["text"])
-            current_words += wc
-    if current_texts:
-        chunks.append({
-            "id": len(chunks),
-            "text": "\n".join(current_texts),
-            "start_page": start_page,
-            "end_page": pages[-1]["page"],
-            "word_count": current_words,
-        })
-    if with_overlap:
-        for i in range(1, len(chunks)):
-            chunks[i]["context"] = _tail_words(chunks[i - 1]["text"], OVERLAP_WORDS)
-    return chunks

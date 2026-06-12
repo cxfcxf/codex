@@ -55,14 +55,15 @@ async def start_translation(
     model: str = Form(default=MODEL),
     src_lang: str = Form("en"),
     tgt_lang: str = Form("zh"),
-    output_format: str = Form("epub"),
     workers: int = Form(1),
-    chunk_size: int = Form(1500),
-    overlap_words: int = Form(150),
+    tolerance_percent: int = Form(2),
+    fix_pass: bool = Form(False),
     base_glossary_file: Optional[UploadFile] = File(None),
 ):
     job_id = str(uuid.uuid4())
     filename = file.filename or "book"
+    if Path(filename).suffix.lower() != ".epub":
+        raise HTTPException(400, "Only EPUB manuscripts are supported.")
     book_stem = Path(filename).stem
     book_dir = WORKSPACE_DIR / book_stem
     book_dir.mkdir(parents=True, exist_ok=True)
@@ -85,10 +86,9 @@ async def start_translation(
         "model": model.strip(),
         "src_lang": src_lang,
         "tgt_lang": tgt_lang,
-        "output_format": output_format,
         "workers": max(1, min(workers, 20)),
-        "chunk_size": max(200, min(chunk_size, 5000)),
-        "overlap_words": max(0, min(overlap_words, 500)),
+        "tolerance_percent": max(0, min(tolerance_percent, 10)),
+        "fix_pass": fix_pass,
         "base_glossary_content": base_glossary_content,
         "original_stem": book_stem,
         "book_dir": str(book_dir),

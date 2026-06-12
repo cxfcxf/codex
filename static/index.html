@@ -34,14 +34,14 @@
 
     <div class="drop-zone" id="dropZone">
       <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
-      <input type="file" id="fileInput" accept=".pdf,.epub,.txt,.docx">
+      <input type="file" id="fileInput" accept=".epub">
       <svg class="drop-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.2">
         <path d="M24 10 C20 6, 10 5, 6 8 v 28 c 4 -3, 14 -2, 18 2 c 4 -4, 14 -5, 18 -2 V 8 c -4 -3, -14 -2, -18 2 z"/>
         <path d="M24 10 v 28"/>
         <path d="M11 14 h 8 M11 19 h 8 M11 24 h 8 M29 14 h 8 M29 19 h 8 M29 24 h 8"/>
       </svg>
       <div class="drop-title">Place your manuscript here</div>
-      <div class="drop-sub">or click to browse &nbsp;·&nbsp; PDF · EPUB · TXT · DOCX</div>
+      <div class="drop-sub">or click to browse &nbsp;·&nbsp; EPUB</div>
       <div class="file-badge" id="fileBadge"></div>
     </div>
 
@@ -77,15 +77,6 @@
           <option value="it">Italian</option>
           <option value="ru">Russian</option>
         </select>
-      </div>
-      <div class="config-full">
-        <label>Bound Format</label>
-        <div class="format-pills" id="formatPills">
-          <div class="pill active" data-fmt="epub">EPUB</div>
-          <div class="pill" data-fmt="html">HTML</div>
-          <div class="pill" data-fmt="txt">TXT</div>
-          <div class="pill" data-fmt="pdf">PDF</div>
-        </div>
       </div>
     </div>
 
@@ -154,39 +145,43 @@
           <div class="setting-row">
             <div class="setting-label"><span>Model</span></div>
             <div class="setting-control">
-              <input type="text" id="modelName" value="qwen3" autocomplete="off" style="flex:1;min-width:0;">
+              <input type="text" id="modelName" value="llama.cpp" autocomplete="off" style="flex:1;min-width:0;">
+            </div>
+          </div>
+          <div class="setting-row-split">
+            <div class="setting-cell">
+              <div class="setting-label">
+                <span>Parallel Scribes</span>
+                <span class="setting-hint" id="hintWorkers"></span>
+              </div>
+              <div class="setting-control">
+                <input type="range" class="setting-range" id="rangeWorkers" min="1" max="100" value="1">
+                <input type="number" class="setting-num" id="numWorkers" min="1" max="100" value="1">
+              </div>
+            </div>
+            <div class="setting-cell">
+              <div class="setting-label">
+                <span>¶ Tolerance</span>
+                <span class="setting-hint">Count drift allowed — floor ±1</span>
+              </div>
+              <div class="setting-control">
+                <input type="range" class="setting-range" id="rangeTol" min="0" max="10" step="1" value="2">
+                <input type="number" class="setting-num" id="numTol" min="0" max="10" step="1" value="2">
+                <span class="setting-unit">%</span>
+              </div>
             </div>
           </div>
           <div class="setting-row">
             <div class="setting-label">
-              <span>Parallel Scribes</span>
-              <span class="setting-hint" id="hintWorkers"></span>
+              <span>Correction Pass</span>
+              <span class="setting-hint">Re-translate lines with leftover source text</span>
             </div>
             <div class="setting-control">
-              <input type="range" class="setting-range" id="rangeWorkers" min="1" max="100" value="1">
-              <input type="number" class="setting-num" id="numWorkers" min="1" max="100" value="1">
-            </div>
-          </div>
-          <div class="setting-row">
-            <div class="setting-label">
-              <span>Translation Chunk</span>
-              <span class="setting-hint" id="hintChunk"></span>
-            </div>
-            <div class="setting-control">
-              <input type="range" class="setting-range" id="rangeChunk" min="200" max="4000" step="100" value="1500">
-              <input type="number" class="setting-num" id="numChunk" min="200" max="4000" step="100" value="1500">
-              <span class="setting-unit">words</span>
-            </div>
-          </div>
-          <div class="setting-row">
-            <div class="setting-label">
-              <span>Overlap Context</span>
-              <span class="setting-hint" id="hintOverlap"></span>
-            </div>
-            <div class="setting-control">
-              <input type="range" class="setting-range" id="rangeOverlap" min="0" max="400" step="25" value="150">
-              <input type="number" class="setting-num" id="numOverlap" min="0" max="400" step="25" value="150">
-              <span class="setting-unit">words</span>
+              <label class="toggle-switch" title="When off, chapters are bound as first translated — no fix pass">
+                <input type="checkbox" id="fixPassToggle">
+                <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                <span class="toggle-state" id="fixPassState">Off</span>
+              </label>
             </div>
           </div>
           <div class="setting-row">

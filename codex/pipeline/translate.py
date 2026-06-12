@@ -20,6 +20,9 @@ STREAMING_LOG = Path("streaming.log")
 # Thinking is permanently off for every pass (llama.cpp/Qwen chat-template switch)
 _NO_THINK = {"chat_template_kwargs": {"enable_thinking": False}}
 
+# After this many paragraph-count mismatches, keep the closest attempt and move on
+MAX_MISMATCH_TRIES = 5
+
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 _CJK_RE = re.compile(r"[一-鿿㐀-䶿]")
 _ENG_WORD_RE = re.compile(r"\b[a-zA-Z]{4,}\b", re.ASCII)
@@ -107,6 +110,10 @@ def _has_untranslated(line: str, keep: frozenset) -> bool:
     return bool(words) and any(w.lower() not in keep for w in words)
 
 
+class ScoutFormatError(ValueError):
+    """update_memory tool args didn't match the declared schema."""
+
+
 def _run_scout(
     client: OpenAI,
     scout_kwargs: dict,
@@ -115,8 +122,13 @@ def _run_scout(
     log_label: str,
     on_new_terms,
     cancel: threading.Event | None,
+    strict: bool = False,
 ) -> None:
-    """Single-turn scout: stream tool calls, process update_memory, log everything."""
+    """Single-turn scout: stream tool calls, process update_memory, log everything.
+
+    With strict=True, malformed tool args raise ScoutFormatError so the caller
+    can retry with corrective feedback instead of guessing what the model meant.
+    """
     if cancel and cancel.is_set():
         raise InterruptedError("cancelled")
 
@@ -153,17 +165,34 @@ def _run_scout(
                     if tc.id:
                         tc_by_idx[idx]["id"] = tc.id
 
+    all_terms: list = []
     for info in tc_by_idx.values():
         if info["name"] != "update_memory":
             continue
         try:
             args = json.loads("".join(info["args"]))
         except Exception:
+            if strict:
+                raise ScoutFormatError("arguments were not valid JSON")
             args = {}
-        raw_terms = args.get("terms", [])
-        terms = [t for t in raw_terms if isinstance(t, dict)] if isinstance(raw_terms, list) else []
-        if terms and on_new_terms:
-            on_new_terms(terms)
+        raw_terms = args.get("terms", []) if isinstance(args, dict) else []
+        if not isinstance(raw_terms, list):
+            if strict:
+                raise ScoutFormatError("terms is not an array")
+            raw_terms = []
+        all_terms.extend(raw_terms)
+
+    if strict:
+        for t in all_terms:
+            if (not isinstance(t, dict)
+                    or not isinstance(t.get("original"), str)
+                    or not isinstance(t.get("translation"), str)):
+                raise ScoutFormatError(f"malformed term entry: {json.dumps(t, ensure_ascii=False)[:120]}")
+
+    terms = [t for t in all_terms if isinstance(t, dict)]
+    if terms and on_new_terms:
+        on_new_terms(terms)
+    if tc_by_idx:
         with STREAMING_LOG.open("a", encoding="utf-8") as log_f:
             log_f.write(f"\n[update_memory: {len(terms)} terms]\n")
             log_f.write(json.dumps(terms, ensure_ascii=False, indent=2) + "\n")
@@ -315,8 +344,13 @@ def translate_chunk(
     cancel: threading.Event | None = None,
     on_new_terms=None,
     on_para_count=None,
+    on_mismatch=None,
     glossary: dict | None = None,
-) -> str:
+    tolerance_percent: int = 2,
+    mismatch_tries: int = MAX_MISMATCH_TRIES,
+) -> tuple[str, bool]:
+    """Returns (translation, ok). ok=False means the paragraph count never came
+    within tolerance and the closest attempt was returned instead."""
     chapter_text = chunk["text"]
 
     # Ship only glossary terms that occur in this chunk — full glossary dilutes the prompt
@@ -324,24 +358,24 @@ def translate_chunk(
         effective_system = build_system_prompt(src_lang, tgt_lang, filter_glossary(glossary, chapter_text))
     else:
         effective_system = system_prompt
-    if chunk.get("context"):
-        effective_system += f"\n\n【上文结尾，仅供衔接参考，不翻译】\n{chunk['context']}"
     tgt_name = LANGUAGE_NAMES.get(tgt_lang, tgt_lang)
 
     src_name = LANGUAGE_NAMES.get(src_lang, src_lang)
+    src_paras = len([p for p in chapter_text.split("\n\n") if p.strip()])
 
-    scout_msg = (
+    scout_instr = (
         f"阅读以下章节，找出所有不在【术语表】中的专有名词（人名、地名、派系名、虚构物品等）。\n"
         f"为每个新词提供{tgt_name}译名，然后调用 update_memory()。无新词时传 terms: []。\n\n"
-        f"完成后仅输出【准备完成】，不输出其他内容。\n\n"
-        f"{chapter_text}"
+        f"完成后仅输出【准备完成】，不输出其他内容。"
     )
+    scout_msg = f"{scout_instr}\n\n{chapter_text}"
     translate_msg = (
         f"将以下{src_name}文本翻译为{tgt_name}。\n\n"
         f"规则：\n"
         f"1. 保持原文叙事风格、节奏与语气。\n"
         f"2. 严格使用【术语表】译名，译名后不加原文括注。\n"
-        f"3. 逐段对应翻译，段落数量必须一致。\n"
+        f"3. 原文以空行分隔，共 {src_paras} 段。逐段对应翻译：每段原文译为恰好一段译文，"
+        f"段与段之间用一个空行分隔。禁止拆分长段、合并短段或增删段落，译文必须正好 {src_paras} 段。\n"
         f"4. 对话自然，符合{tgt_name}表达习惯。\n"
         f"5. 严禁添加译注、解释、括号说明或任何原文没有的内容。\n\n"
         f"直接输出译文，不输出任何非译文内容。"
@@ -349,59 +383,97 @@ def translate_chunk(
 
     base_kwargs: dict = dict(model=model, temperature=temperature, stream=True, extra_body=_NO_THINK)
 
+    # tool_choice="required" arms llama.cpp's grammar from the first token, so the
+    # args are schema-enforced at decode time — no unconstrained window for the
+    # model to fumble the tool-call envelope (seen with gemma on long chapters)
     scout_kwargs: dict = dict(model=model, temperature=temperature, stream=True,
-                              tools=[TOOL_UPDATE_MEMORY], tool_choice="auto",
+                              tools=[TOOL_UPDATE_MEMORY], tool_choice="required",
                               extra_body=_NO_THINK)
 
     STREAMING_LOG.write_text("", encoding="utf-8")  # truncate for new chapter
 
-    # Scout runs once to discover new terms
+    # Scout runs once to discover new terms; malformed tool output gets fed back
+    # to the model for a retry — only the last attempt accepts it leniently
+    scout_user = scout_msg
     for attempt in range(MAX_RETRIES):
         try:
-            _run_scout(client, scout_kwargs, effective_system, scout_msg, "=== SCOUT TURN ===", on_new_terms, cancel)
+            _run_scout(client, scout_kwargs, effective_system, scout_user, "=== SCOUT TURN ===",
+                       on_new_terms, cancel, strict=attempt < MAX_RETRIES - 1)
             break
         except InterruptedError:
             raise
-        except Exception:
+        except ScoutFormatError as exc:
+            with STREAMING_LOG.open("a", encoding="utf-8") as log_f:
+                log_f.write(f"\n[scout output malformed (attempt {attempt + 1}): {exc}, retrying]\n")
+            scout_user = (
+                f"{scout_instr}\n\n"
+                f"【上次调用不合格】update_memory 的参数格式错误：{exc}。"
+                f"terms 数组中每项的 original、translation、type 必须各是一个字符串，"
+                f"不得使用数组、嵌套对象或其他类型。重新调用 update_memory()。\n\n"
+                f"{chapter_text}"
+            )
+        except Exception as exc:
             if attempt == MAX_RETRIES - 1:
-                raise
+                # Scout is auxiliary — translate without new-term discovery rather than fail the chapter
+                with STREAMING_LOG.open("a", encoding="utf-8") as log_f:
+                    log_f.write(f"\n[scout failed, continuing without term discovery: {exc}]\n")
+                break
             time.sleep(RETRY_DELAY)
 
     # Rebuild system with glossary updated by scout
     if glossary is not None:
         translate_system = build_system_prompt(src_lang, tgt_lang, filter_glossary(glossary, chapter_text))
-        if chunk.get("context"):
-            translate_system += f"\n\n【上文结尾，仅供衔接参考，不翻译】\n{chunk['context']}"
     else:
         translate_system = effective_system
 
-    src_paras = len([p for p in chapter_text.split("\n\n") if p.strip()])
-
     result = ""
-    attempt = 0
+    ok = False
+    misses = 0
+    best: tuple[int, str] | None = None  # (diff, text) closest to source so far
+    tolerance = max(1, round(src_paras * tolerance_percent / 100))
+    user_msg = f"{translate_msg}\n\n{chapter_text}"
     while True:
         if cancel and cancel.is_set():
             raise InterruptedError("cancelled")
         try:
             raw = _stream_translate(
                 client, base_kwargs, translate_system,
-                f"{translate_msg}\n\n{chapter_text}",
+                user_msg,
                 "=== TRANSLATE TURN ===", cancel,
             )
             result = _extract_translation(raw)
             tgt_paras = len([p for p in result.split("\n\n") if p.strip()])
-            if abs(tgt_paras - src_paras) <= 1:
+            diff = abs(tgt_paras - src_paras)
+            if diff <= tolerance:
+                ok = True
                 break
+            misses += 1
+            if best is None or diff < best[0]:
+                best = (diff, result)
             with STREAMING_LOG.open("a", encoding="utf-8") as log_f:
-                log_f.write(f"\n[para mismatch attempt {attempt + 1}: src={src_paras} tgt={tgt_paras}, retrying]\n")
+                log_f.write(f"\n[para mismatch attempt {misses}/{mismatch_tries}: src={src_paras} tgt={tgt_paras} tol=±{tolerance}]\n")
+            if on_mismatch:
+                on_mismatch(misses, mismatch_tries, src_paras, tgt_paras)
+            if misses >= mismatch_tries:
+                result = best[1]
+                with STREAMING_LOG.open("a", encoding="utf-8") as log_f:
+                    log_f.write(f"\n[shape check failed after {misses} tries: src={src_paras} best diff={best[0]}]\n")
+                break
+            # Tell the model what went wrong instead of resending the same prompt
+            hint = "不要把一段原文拆成多段译文" if tgt_paras > src_paras else "不要合并或遗漏段落"
+            user_msg = (
+                f"{translate_msg}\n\n"
+                f"【上次译文不合格】输出了 {tgt_paras} 段，但原文是 {src_paras} 段。"
+                f"{hint}，重新逐段翻译，确保译文正好 {src_paras} 段。\n\n"
+                f"{chapter_text}"
+            )
         except InterruptedError:
             raise
         except Exception:
             pass
-        attempt += 1
         time.sleep(RETRY_DELAY)
 
     tgt_paras = len([p for p in result.split("\n\n") if p.strip()])
     if on_para_count:
         on_para_count(src_paras, tgt_paras)
-    return result
+    return result, ok

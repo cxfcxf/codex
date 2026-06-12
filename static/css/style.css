@@ -423,24 +423,6 @@ select {
 }
 select option { background: #15100a; color: var(--vellum); }
 
-/* ── Format pills ─────────────────────────────────────────────────── */
-.format-pills { display: flex; gap: 8px; }
-.pill {
-  flex: 1; padding: 8px 4px; text-align: center;
-  background: var(--page-deep);
-  border: 1px solid var(--line-strong); border-radius: 2px;
-  font-family: var(--carved); font-weight: 500;
-  font-size: 11.5px; letter-spacing: 0.14em;
-  color: var(--vellum-dim);
-  cursor: pointer; transition: all 0.18s;
-}
-.pill:hover { border-color: var(--gold-deep); color: var(--vellum); }
-.pill.active {
-  background: linear-gradient(180deg, rgba(216, 162, 74, 0.16), rgba(216, 162, 74, 0.06));
-  border-color: var(--gold-deep); color: var(--gold-bright);
-  box-shadow: 0 0 14px rgba(216, 162, 74, 0.08);
-}
-
 /* ── Page furniture: flip buttons, heading notes, fillers ─────────── */
 .flip-btn {
   align-self: center;
@@ -475,6 +457,9 @@ select option { background: #15100a; color: var(--vellum); }
 }
 
 .setting-row { display: flex; align-items: center; gap: 12px; justify-content: space-between; }
+.setting-row-split { display: flex; gap: 20px; }
+.setting-row-split .setting-cell { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.setting-row-split .setting-label { min-width: 0; }
 .setting-label {
   display: flex; flex-direction: column; gap: 3px; min-width: 132px;
   font-family: var(--carved); font-size: 10px; font-weight: 500;
@@ -504,6 +489,37 @@ select option { background: #15100a; color: var(--vellum); }
   font-family: var(--mono); font-size: 12px; text-align: center;
 }
 .setting-unit { font-family: var(--mono); font-size: 10px; color: var(--vellum-faint); white-space: nowrap; }
+
+.toggle-switch {
+  display: inline-flex; align-items: center; gap: 9px;
+  cursor: pointer; user-select: none; margin-bottom: 0;
+}
+.toggle-switch input { position: absolute; opacity: 0; pointer-events: none; }
+.toggle-track {
+  width: 34px; height: 16px; border-radius: 9px;
+  border: 1px solid var(--line-strong); background: var(--page-deep);
+  position: relative; flex: none;
+  transition: background 0.25s, border-color 0.25s;
+}
+.toggle-thumb {
+  position: absolute; top: 2px; left: 2px;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--vellum-faint);
+  transition: left 0.25s, background 0.25s, box-shadow 0.25s;
+}
+.toggle-switch input:checked + .toggle-track {
+  border-color: var(--gold-deep); background: rgba(216, 162, 74, 0.12);
+}
+.toggle-switch input:checked + .toggle-track .toggle-thumb {
+  left: 20px; background: var(--gold);
+  box-shadow: 0 0 8px var(--gold-glow);
+}
+.toggle-switch:hover .toggle-track { border-color: var(--gold-deep); }
+.toggle-state {
+  font-family: var(--mono); font-size: 10px; min-width: 22px;
+  color: var(--vellum-faint); text-transform: uppercase; letter-spacing: 0.08em;
+}
+.toggle-switch input:checked ~ .toggle-state { color: var(--gold); }
 
 .glossary-upload-btn {
   display: inline-flex; align-items: center; gap: 7px;

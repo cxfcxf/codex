@@ -2,7 +2,6 @@ const $ = id => document.getElementById(id);
 
 // ── State ──
 let selectedFile = null;
-let selectedFormat = 'epub';
 let currentJobId = null;
 let currentES = null;
 
@@ -19,7 +18,8 @@ dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-ove
 dropZone.addEventListener('drop', e => {
   e.preventDefault();
   dropZone.classList.remove('drag-over');
-  if (e.dataTransfer.files[0]) selectFile(e.dataTransfer.files[0]);
+  const f = e.dataTransfer.files[0];
+  if (f && /\.epub$/i.test(f.name)) selectFile(f);
 });
 
 async function selectFile(file) {
@@ -49,25 +49,11 @@ async function analyzeFile(file) {
 }
 
 function applyAutoSettings(s) {
-  setSetting('Workers',  s.workers,            null);
-  setSetting('Chunk',    s.chunk_size,          s.chunk_size + 'w');
-  setSetting('Overlap',  s.overlap_words,       s.overlap_words + 'w');
-
-  // Hide chunk/overlap settings for structured EPUBs — chapters are natural boundaries
-  const chunkRow   = $('rangeChunk').closest('.setting-row');
-  const overlapRow = $('rangeOverlap').closest('.setting-row');
-  if (s.is_structured) {
-    chunkRow.style.display   = 'none';
-    overlapRow.style.display = 'none';
-  } else {
-    chunkRow.style.display   = '';
-    overlapRow.style.display = '';
-  }
+  setSetting('Workers', s.workers, null);
 
   const wk = s.total_words >= 1000 ? Math.round(s.total_words / 1000) + 'k' : s.total_words;
   const label = s.is_structured ? 'chapters' : 'words';
   $('settingsSummary').textContent = `${wk} ${label} · auto`;
-  updateSettingsSummary();
 }
 
 // ── The book: open the cover, flip the leaf ──
@@ -104,8 +90,7 @@ try {
 
 const SETTINGS = [
   { key: 'Workers', rangeId: 'rangeWorkers', numId: 'numWorkers', hintId: 'hintWorkers' },
-  { key: 'Chunk',   rangeId: 'rangeChunk',   numId: 'numChunk',   hintId: 'hintChunk'   },
-  { key: 'Overlap', rangeId: 'rangeOverlap', numId: 'numOverlap', hintId: 'hintOverlap' },
+  { key: 'Tol',     rangeId: 'rangeTol',     numId: 'numTol',     hintId: null },
 ];
 
 SETTINGS.forEach(({ rangeId, numId }) => {
@@ -123,18 +108,20 @@ function setSetting(key, value, hintText) {
 }
 
 function updateSettingsSummary() {
-  const w = $('numWorkers').value;
-  const c = $('numChunk').value;
-  $('settingsSummary').textContent = `${w} workers · ${c}w chunks`;
+  $('settingsSummary').textContent = `${$('numWorkers').value} workers`;
 }
 
 function getSettings() {
   return {
-    workers:       parseInt($('numWorkers').value),
-    chunk_size:    parseInt($('numChunk').value),
-    overlap_words: parseInt($('numOverlap').value),
+    workers:           parseInt($('numWorkers').value),
+    tolerance_percent: parseInt($('numTol').value),
   };
 }
+
+// ── Correction pass toggle ──
+$('fixPassToggle').addEventListener('change', () => {
+  $('fixPassState').textContent = $('fixPassToggle').checked ? 'On' : 'Off';
+});
 
 // ── Base glossary upload ──
 let selectedBaseGlossary = null;
@@ -157,16 +144,6 @@ $('baseGlossaryClear').addEventListener('click', () => {
 });
 
 
-
-
-// ── Format pills ──
-document.querySelectorAll('#formatPills .pill').forEach(pill => {
-  pill.addEventListener('click', () => {
-    document.querySelectorAll('#formatPills .pill').forEach(p => p.classList.remove('active'));
-    pill.classList.add('active');
-    selectedFormat = pill.dataset.fmt;
-  });
-});
 
 
 // ── Submit ──
@@ -194,10 +171,9 @@ async function startTranslation() {
   form.append('model',         $('modelName').value.trim());
   form.append('src_lang',      $('srcLang').value);
   form.append('tgt_lang',      $('tgtLang').value);
-  form.append('output_format', selectedFormat);
-  form.append('workers',       settings.workers);
-  form.append('chunk_size',    settings.chunk_size);
-  form.append('overlap_words', settings.overlap_words);
+  form.append('workers',           settings.workers);
+  form.append('tolerance_percent', settings.tolerance_percent);
+  form.append('fix_pass',          $('fixPassToggle').checked);
   if (selectedBaseGlossary) form.append('base_glossary_file', selectedBaseGlossary);
 
   try {
